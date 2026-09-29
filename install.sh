@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Link every skill under skills/ into ~/.claude/skills/ as an absolute symlink.
 # Idempotent. A symlink pointing elsewhere is repointed; a real file or
-# directory is never touched (refused, and the script exits non-zero).
+# directory is never touched (refused, and the script exits non-zero). A
+# folder without a SKILL.md is not a loadable skill and is skipped.
 set -u
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -15,13 +16,19 @@ fi
 
 mkdir -p "$skills_dst"
 
-linked=0 unchanged=0 repointed=0 refused=0
+linked=0 unchanged=0 repointed=0 refused=0 skipped=0
 
 for dir in "$skills_src"/*/; do
   [ -d "$dir" ] || continue
   name="$(basename "$dir")"
   target="$skills_src/$name"
   link="$skills_dst/$name"
+
+  if [ ! -f "$target/SKILL.md" ]; then
+    echo "skipped    $name: no SKILL.md, not a loadable skill"
+    skipped=$((skipped + 1))
+    continue
+  fi
 
   if [ -L "$link" ]; then
     current="$(readlink "$link")"
@@ -43,6 +50,6 @@ for dir in "$skills_src"/*/; do
   fi
 done
 
-echo "summary: $linked linked, $repointed repointed, $unchanged unchanged, $refused refused"
+echo "summary: $linked linked, $repointed repointed, $unchanged unchanged, $refused refused, $skipped skipped"
 
 [ "$refused" -eq 0 ]

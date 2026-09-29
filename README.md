@@ -23,6 +23,10 @@ cd dev-tools
 
 Every example is anonymized ("a solo-built React + Supabase app"). No project names, repo names, commit SHAs, workflow run IDs, keys or account IDs. Anything that names a specific repo, job or ID comes in through a command-line argument or an environment variable, never from a file in this repo. A secret scan runs on every push.
 
+## Maintainer scrub gate
+
+Pushes run `scripts/scrub.sh`, which scans the working tree and full history with gitleaks and against a private denylist kept outside the repo (`~/.config/dev-tools/scrub`, or `SCRUB_CONFIG_DIR`). It fails closed: a missing config or tool blocks the push. The hook in `.githooks/pre-push` only activates in clones that run `git config core.hooksPath .githooks`, so if you cloned this repo you can ignore all of it.
+
 ## License
 
 [MIT](LICENSE).

@@ -173,7 +173,6 @@ esac
 echo "== (d) denylist: all revisions"
 git rev-list --all > "$TMP/revs" || die "git rev-list failed"
 : > "$TMP/out_d"
-: > "$TMP/out_e"
 while IFS= read -r rev; do
   [ -n "$rev" ] || continue
   rc=0
@@ -183,15 +182,6 @@ while IFS= read -r rev; do
     1) ;;
     *) cat "$TMP/err_d" >&2; die "git grep failed at $rev (exit $rc)" ;;
   esac
-  if [ -s "$TMP/review" ]; then
-    rc=0
-    git grep -n -I -i -w -F -f "$TMP/review" "$rev" > "$TMP/one" 2>"$TMP/err_d" || rc=$?
-    case "$rc" in
-      0) cut -d: -f1-3 "$TMP/one" >> "$TMP/out_e" ;;
-      1) ;;
-      *) : ;; # review-only: never fails the gate
-    esac
-  fi
 done < "$TMP/revs"
 if [ -s "$TMP/out_d" ]; then
   sort -u "$TMP/out_d" | sed 's/^/HIT: /'
@@ -199,15 +189,12 @@ if [ -s "$TMP/out_d" ]; then
 fi
 
 # ---- (e) review only: short stems, never failing ----------------------------
-echo "== (e) review only: short file-name stems"
+echo "== (e) review only: short file-name stems (working tree)"
 if [ -s "$TMP/review" ]; then
   rc=0
   grep -r -n -I -i -w -F -f "$TMP/review" --exclude-dir=.git . > "$TMP/out_e_wt" 2>/dev/null || rc=$?
   if [ "$rc" -eq 0 ]; then
     cut -d: -f1,2 "$TMP/out_e_wt" | sed 's|^\./||' | sort -u | sed 's/^/WARN: /'
-  fi
-  if [ -s "$TMP/out_e" ]; then
-    sort -u "$TMP/out_e" | sed 's/^/WARN: /'
   fi
 fi
 

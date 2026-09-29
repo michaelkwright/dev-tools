@@ -32,11 +32,11 @@ Read the target and derive every placeholder default from what is there (each te
   - `TZ_TEST_GREP`: the default grep over every directory that holds source or tests.
 - Framework markers (vite, react, phaser): a DOM framework means the report points to the vitest-suite-speed skill for the test-environment split.
 - `supabase/` suggests the database and supabase blocks (`supabase/.temp/project-ref` holds a linked ref). A `.github/workflows/` file with a `schedule:` trigger fills `SCHEDULED_CI_CMD`.
-- Existing `CLAUDE.md`, `.claude/settings.json`, `.gitignore`, and every doc the doc-system ADOPT inventory names. SEED when none of the doc-system files exist (a README is not one of them); ADOPT otherwise.
+- Existing `CLAUDE.md`, `.claude/settings.json`, `.gitignore`, and every doc the doc-system ADOPT inventory names. SEED when none of the doc-system files exist (its seed set; `CLAUDE.md` and a README are not among them); ADOPT otherwise.
 - Visibility: `gh repo view --json visibility` when `gh` is available and the remote is on GitHub; otherwise ask.
 - The contract-test path: `src/test/doc-contracts.test.ts` by default. Use the repo's test directory if tests live elsewhere. If a tsconfig includes the path without node types, use a top-level `test/` outside every tsconfig instead, since the test imports `node:fs`.
 
-**Already bootstrapped** means `CLAUDE.md` carries a `Seeded from dev-tools @` line and the limits markers, the contract test exists, and (if `CLAUDE.md` has a Supabase section) `.claude/settings.json` holds the deny rule. If so, run step 5e only, change nothing, and report "already bootstrapped from dev-tools @ <recorded SHA>; nothing changed". Never re-seed or update files the project now owns. If only some pieces exist, do only the missing ones.
+**Already bootstrapped** means every piece exists: `CLAUDE.md` with a `Seeded from dev-tools @` line and the limits markers; the doc system (the seed set, or the files its ADOPT mapping named); the contract test; `.claude/settings.json` with the deny rule if `CLAUDE.md` has a Supabase section; and the `.gitignore` line. If so, skip steps 3 to 6 and change nothing tracked. Run step 5e with the command recorded in `CLAUDE.md`, and report "already bootstrapped from dev-tools @ <recorded SHA> (current: <DEV_TOOLS_SHA>); nothing changed" with the 5e results. Never re-seed or update files the project now owns. If only some pieces exist, do only the missing ones. A missing `.claude/project-instructions.local.md` is untracked, so offer to regenerate it rather than counting it as a piece.
 
 ## 3. Ask only what detection can't answer, in one batch
 
@@ -51,14 +51,14 @@ Read the target and derive every placeholder default from what is there (each te
 - Visibility, if detection could not tell.
 
 **If the target is public, no project ref or ID goes into any committed file: write `$SUPABASE_PROJECT_REF` in place of the ref and add a line under that code block saying the ref is kept out of the repo, set it locally. Say so to the user.**
-Why: a public repo publishes everything committed to it, forever.
+Why: a public repo publishes everything committed to it, forever. A private repo may hold the ref; the report says to swap it out before the repo ever goes public.
 
 ## 4. Seed or adopt, never clobbering
 
 **For every target file that already exists, show the proposed merge and apply it only on approval.**
 Why: the project's existing notes and settings are its own, and a bootstrap that overwrites them loses work silently.
 
-- Existing `CLAUDE.md`: the filled template, with the old content kept verbatim under a `## Project Notes` section just before `## Known Failure Patterns`; a leading H1 title is dropped, and the proposal says so. Flag any old note that contradicts a template rule, in the proposal and the report, instead of choosing between them.
+- Existing `CLAUDE.md` (this skill governs it, not doc-system ADOPT): the filled template, with the old content kept verbatim under a `## Project Notes` section just before `## Known Failure Patterns`; a leading H1 title is dropped, and the proposal says so. Flag any old note that contradicts a template rule, in the proposal and the report, instead of choosing between them.
 - Existing docs: the doc-system ADOPT mapping, including the `CONFIG` fit, is part of this proposal, since step 5a needs its values.
 - Existing JSON: merged key by key; arrays are unioned; the result must parse.
 - Existing `.gitignore`: lines are appended, never changed.
@@ -67,19 +67,19 @@ Why: the project's existing notes and settings are its own, and a bootstrap that
 ## 5. Write, in this order
 
 **a. `CLAUDE.md`** from `templates/CLAUDE.md.tmpl`:
-- Fill every placeholder. `DOC_CONTRACT_CMD` is `npx vitest run <test path>`. `DOC_CONTRACT_LIMITS` is doc-system's `reference/limits.md` below its rule, filled from the test's `CONFIG` as step 5b will leave it. After an ADOPT fit, also rewrite limits lines 7 and 11 to the fitted heading and date shape; the test checks only the numeric phrases.
+- Fill every placeholder. `DOC_CONTRACT_CMD` is `npx vitest run <test path>`. `DOC_CONTRACT_LIMITS` is doc-system's `reference/limits.md` below its rule, filled from the test's `CONFIG` as step 5b will leave it. After an ADOPT fit, also rewrite numbered items 7 and 11 of the limits list to the fitted heading and date shape; the test checks only the numeric phrases.
 - Keep or strip each optional block; delete the `BEGIN:`/`END:` marker lines of kept blocks, and stripped blocks entirely.
 - Keep the `doc-contract-limits:start`/`end` markers. Delete the TEMPLATE NOTES comment.
 - Fail if any `{{` remains outside a code fence, or any template placeholder remains anywhere (check below).
 
 **b. Docs and the contract test** by following doc-system's `SKILL.md` in the step-2 mode, including its break-and-restore proof, with the step-2 test path and `CONFIG.root` set to reach the repo root from it. Fill `{{DEV_TOOLS_SHA}}` in the test's header comment too. The test stays TypeScript even in a JavaScript repo; vitest runs it without a tsconfig.
 - If vitest is absent, ask before adding it as a dev dependency with the repo's package manager (the latest version compatible with the repo's vite, if any).
-- For test-environment setup (node vs a DOM environment), point to the vitest-suite-speed skill; do not set it up here.
+- When step 2 found a DOM framework, point to the vitest-suite-speed skill for the test-environment split; do not set it up here.
 - ADOPT specifics:
   - Add no changelog entry.
-  - Stamp the spec with the top existing entry's version, in the fitted date and version formats.
+  - Stamp the spec with today's date and the top existing entry's version, in the fitted date and version formats.
   - Give the seeded doc-system Feature Index row and subsection the version `adopted after <that version>`.
-  - Keep archive file names in the `v<first>-onward.md` form whatever the heading format.
+  - Name the open archive `v<oldest existing version>-onward.md`; archive file names keep the `v` form whatever the heading format.
   - Warn in the report if the fitted entry marker would also match a non-entry heading a later edit might add (an `## Unreleased` section, say).
 
 **c. `.claude/settings.json`**, the shared settings file meant to be committed (not `settings.local.json`). With the supabase block kept, merge in:
@@ -112,5 +112,5 @@ Why: later distillation from this project into dev-tools is then blocked from le
 
 - Files created, and files merged (with what was kept); everything but `.claude/project-instructions.local.md` is meant to be committed.
 - Optional blocks kept, the test path and command, and any `CLAUDE.md` note flagged as contradicting a template rule.
-- Left for the user: paste `.claude/project-instructions.local.md` into the Claude.ai Project's custom instructions; apply any schema steps by hand; any command that does not exist yet; after an ADOPT, describing the existing features in the spec.
+- Left for the user: paste `.claude/project-instructions.local.md` into the Claude.ai Project's custom instructions; apply any schema steps by hand; any command that does not exist yet; replace the example epic in `ROADMAP.md`; after an ADOPT, describe the existing features in the spec.
 - CI templates are not yet part of this skill.

@@ -1,0 +1,158 @@
+-- Seeded from dev-tools @ {{DEV_TOOLS_SHA}}; this file is now the project's own.
+--
+-- NEW FUNCTION: SECURITY DEFINER, search_path = '', schema-qualified names,
+-- revoke from PUBLIC and the named roles, then the intended grant; verify inside
+-- the same transaction.
+--
+-- Worked example: a per-user daily rate limit on order submission, called only by
+-- an Edge Function's service-role client, before any paid egress:
+--   const { data, error } = await svc.rpc("consume_order_submit_quota", { p_user_id: user.id });
+-- Classify the result as allow / limit / fault and fail closed on a fault
+-- (reference/edge-functions-and-storage.md).
+--   - The day comes from the server clock INSIDE the function. There is no date
+--     parameter: a caller-supplied date would let any caller reset the counter.
+--   - The counter row is locked (FOR UPDATE), so concurrent calls cannot both pass.
+--   - EXECUTE is service_role only: the function takes a caller-supplied user id
+--     and bypasses RLS, so EXECUTE is its only gate.
+-- Rename `order_submit` throughout and set the limit constant.
+--
+-- CREATE OR REPLACE keeps this ACL; a DROP + CREATE (forced by any return-type
+-- change) resets it, so rerun steps 3 and 4 after one. Apply as ONE paste in the
+-- dashboard SQL editor; a failed check raises and rolls the whole paste back.
+--
+-- Why each step: supabase-hardening skill, reference/born-open-defaults.md,
+-- reference/gates-that-lie.md and reference/verification.md.
+
+begin;
+
+-- 1. The counter table: server-only. RLS on with no policy, AND no grant to any
+--    client role, so the grant is what refuses a client, not the absent policy.
+create table public.order_submit_counters (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  day     date not null,
+  calls   integer not null default 0 check (calls >= 0)
+);
+revoke all on table public.order_submit_counters from public, anon, authenticated;
+alter table public.order_submit_counters enable row level security;
+
+-- 2. The function. Every relation is schema-qualified, because search_path is
+--    empty: a missed qualification raises 42P01 at run time, not at CREATE.
+create function public.consume_order_submit_quota(p_user_id uuid)
+returns jsonb
+language plpgsql
+security definer
+set search_path = ''
+as $function$
+declare
+  c_daily_limit constant integer := 50;                        -- the one copy of the limit
+  v_today       date := (now() at time zone 'utc')::date;      -- the server's day, never a parameter
+  v_day         date;
+  v_calls       integer;
+begin
+  if p_user_id is null then
+    return jsonb_build_object('allowed', false, 'calls_today', 0, 'daily_limit', c_daily_limit);
+  end if;
+
+  -- Make sure the row exists, then lock it. An unknown user fails the foreign
+  -- key and raises, which the caller classifies as a fault: closed, not open.
+  insert into public.order_submit_counters (user_id, day, calls)
+  values (p_user_id, v_today, 0)
+  on conflict (user_id) do nothing;
+
+  select c.day, c.calls into v_day, v_calls
+  from public.order_submit_counters c
+  where c.user_id = p_user_id
+  for update;
+
+  if v_day is distinct from v_today then
+    v_calls := 0;
+  end if;
+
+  if v_calls >= c_daily_limit then
+    return jsonb_build_object('allowed', false, 'calls_today', v_calls, 'daily_limit', c_daily_limit);
+  end if;
+
+  update public.order_submit_counters c
+     set day = v_today, calls = v_calls + 1
+   where c.user_id = p_user_id;
+
+  return jsonb_build_object('allowed', true, 'calls_today', v_calls + 1, 'daily_limit', c_daily_limit);
+end;
+$function$;
+
+-- 3. Revoke from PUBLIC and from the named roles: two independent grants, and
+--    either revoke alone leaves the other. Name the exact signature.
+revoke all on function public.consume_order_submit_quota(uuid) from public, anon, authenticated;
+
+-- 4. The intended grant.
+grant execute on function public.consume_order_submit_quota(uuid) to service_role;
+
+-- 5. Verify. Raw ACL first, privilege helpers second. A NULL proacl or relacl
+--    means the built-in defaults apply (PUBLIC EXECUTE, for a function), and
+--    aclexplode(NULL) returns no rows; COALESCE with acldefault expands it.
+do $$
+declare
+  v_fn  constant regprocedure := 'public.consume_order_submit_quota(uuid)'::regprocedure;
+  v_tbl constant regclass     := 'public.order_submit_counters'::regclass;
+  v_n   integer;
+begin
+  -- (a) One overload only, and it takes no date: the day is the server's.
+  select count(*) into v_n
+  from pg_proc p
+  where p.pronamespace = 'public'::regnamespace
+    and p.proname = 'consume_order_submit_quota';
+  if v_n <> 1 then
+    raise exception 'VERIFY: expected one consume_order_submit_quota, found %', v_n;
+  end if;
+  if pg_get_function_identity_arguments(v_fn) is distinct from 'p_user_id uuid' then
+    raise exception 'VERIFY: % takes (%), expected (p_user_id uuid)', v_fn, pg_get_function_identity_arguments(v_fn);
+  end if;
+
+  -- (b) SECURITY DEFINER with the hardened search_path. The constructed value
+  --     equals the stored text {"search_path=\"\""}; IS DISTINCT FROM, because
+  --     `=` yields NULL on an unhardened function and hides the failure.
+  if not (select p.prosecdef from pg_proc p where p.oid = v_fn) then
+    raise exception 'VERIFY: % is not SECURITY DEFINER', v_fn;
+  end if;
+  if (select p.proconfig::text from pg_proc p where p.oid = v_fn)
+     is distinct from (array['search_path=""'])::text then
+    raise exception 'VERIFY: % lacks search_path = '''' (proconfig %)',
+      v_fn, (select p.proconfig::text from pg_proc p where p.oid = v_fn);
+  end if;
+
+  -- (c) No EXECUTE for PUBLIC (grantee 0), anon or authenticated; service_role holds it.
+  if exists (
+    select 1 from pg_proc p, aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+    where p.oid = v_fn
+      and a.grantee in (0, 'anon'::regrole::oid, 'authenticated'::regrole::oid)
+  ) then
+    raise exception 'VERIFY: % still grants EXECUTE to PUBLIC, anon or authenticated (%)',
+      v_fn, (select p.proacl::text from pg_proc p where p.oid = v_fn);
+  end if;
+  if not exists (
+    select 1 from pg_proc p, aclexplode(coalesce(p.proacl, acldefault('f', p.proowner))) a
+    where p.oid = v_fn
+      and a.grantee = 'service_role'::regrole::oid and a.privilege_type = 'EXECUTE'
+  ) then
+    raise exception 'VERIFY: service_role cannot execute %', v_fn;
+  end if;
+  if has_function_privilege('anon', v_fn, 'EXECUTE')
+     or has_function_privilege('authenticated', v_fn, 'EXECUTE') then
+    raise exception 'VERIFY: a client role effectively holds EXECUTE on %', v_fn;
+  end if;
+
+  -- (d) The counter table: RLS on, and no client role holds anything on it.
+  if not (select c.relrowsecurity from pg_class c where c.oid = v_tbl) then
+    raise exception 'VERIFY: RLS is not enabled on %', v_tbl;
+  end if;
+  if exists (
+    select 1 from pg_class c, aclexplode(coalesce(c.relacl, acldefault('r', c.relowner))) a
+    where c.oid = v_tbl
+      and a.grantee in (0, 'anon'::regrole::oid, 'authenticated'::regrole::oid)
+  ) or has_table_privilege('anon', v_tbl, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
+    or has_table_privilege('authenticated', v_tbl, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER') then
+    raise exception 'VERIFY: a client role holds a privilege on %', v_tbl;
+  end if;
+end $$;
+
+commit;

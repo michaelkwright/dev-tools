@@ -1,0 +1,80 @@
+-- Seeded from dev-tools @ {{DEV_TOOLS_SHA}}; this file is now the project's own.
+--
+-- NEW VIEW: security_invoker, revoke, then the intended grant; verify inside the
+-- same transaction.
+--
+-- Worked example: public.order_summaries over public.orders (the new-table
+-- template's table, which must already exist). Rename throughout; keep the steps.
+-- Apply as ONE paste in the dashboard SQL editor; a failed check raises and the
+-- raise rolls the whole paste back. Needs Postgres 15 or later.
+--
+-- Rebuilding this view later (DROP + CREATE, or any change CREATE OR REPLACE
+-- refuses) makes a NEW relation with the defaults again: rerun every step below.
+--
+-- Why each step: supabase-hardening skill, reference/gates-that-lie.md and
+-- reference/born-open-defaults.md.
+
+begin;
+
+-- 1. The view runs as its caller, so the caller's RLS applies to public.orders.
+--    Without security_invoker it runs as its owner, who bypasses RLS.
+--    List columns explicitly: `o.*` is expanded once, at creation.
+create view public.order_summaries
+with (security_invoker = true)
+as
+select o.id, o.user_id, o.title, o.status, o.created_at
+from public.orders o;
+
+-- 2. Revoke from every role, service_role included: a simple view is
+--    auto-updatable, so the default ALL would let any of them write through it.
+revoke all on table public.order_summaries from public, anon, authenticated, service_role;
+
+-- 3. The intended grant: read-only, and never to anon unless the data is read
+--    before login.
+grant select on table public.order_summaries to authenticated, service_role;
+
+-- 4. Verify. A NULL relacl means the built-in defaults apply, and
+--    aclexplode(NULL) returns no rows; COALESCE with acldefault expands it.
+do $$
+declare
+  v_view constant regclass := 'public.order_summaries'::regclass;
+  v_acl  aclitem[];
+begin
+  if (select c.relkind from pg_class c where c.oid = v_view) is distinct from 'v' then
+    raise exception 'VERIFY: % is not a view', v_view;
+  end if;
+
+  -- (a) Invoker rights are set.
+  if not coalesce(
+       (select c.reloptions @> array['security_invoker=true'] from pg_class c where c.oid = v_view),
+       false) then
+    raise exception 'VERIFY: % lacks security_invoker=true (reloptions %)',
+      v_view, (select c.reloptions from pg_class c where c.oid = v_view);
+  end if;
+
+  select coalesce(c.relacl, acldefault('r', c.relowner)) into v_acl
+  from pg_class c where c.oid = v_view;
+
+  -- (b) anon and PUBLIC hold nothing.
+  if exists (
+    select 1 from aclexplode(v_acl) a
+    where a.grantee in (0, 'anon'::regrole::oid)
+  ) or has_table_privilege('anon', v_view, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER') then
+    raise exception 'VERIFY: anon or PUBLIC holds a privilege on % (%)', v_view, v_acl;
+  end if;
+
+  -- (c) authenticated and service_role hold SELECT and nothing else.
+  if exists (
+    select 1 from aclexplode(v_acl) a
+    where a.grantee in ('authenticated'::regrole::oid, 'service_role'::regrole::oid)
+      and a.privilege_type <> 'SELECT'
+  ) then
+    raise exception 'VERIFY: a client or service role can write through % (%)', v_view, v_acl;
+  end if;
+  if not has_table_privilege('authenticated', v_view, 'SELECT')
+     or not has_table_privilege('service_role', v_view, 'SELECT') then
+    raise exception 'VERIFY: the intended SELECT grant on % is missing', v_view;
+  end if;
+end $$;
+
+commit;

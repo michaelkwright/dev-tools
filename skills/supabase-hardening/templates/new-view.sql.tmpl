@@ -44,10 +44,13 @@ begin
     raise exception 'VERIFY: % is not a view', v_view;
   end if;
 
-  -- (a) Invoker rights are set.
-  if not coalesce(
-       (select c.reloptions @> array['security_invoker=true'] from pg_class c where c.oid = v_view),
-       false) then
+  -- (a) Invoker rights are set. reloptions keeps the value as written
+  --     (`= on` is stored as security_invoker=on), so read the value.
+  if not exists (
+       select 1 from pg_class c, unnest(c.reloptions) o(opt)
+       where c.oid = v_view
+         and lower(o.opt) in ('security_invoker=true', 'security_invoker=on',
+                              'security_invoker=yes', 'security_invoker=1')) then
     raise exception 'VERIFY: % lacks security_invoker=true (reloptions %)',
       v_view, (select c.reloptions from pg_class c where c.oid = v_view);
   end if;

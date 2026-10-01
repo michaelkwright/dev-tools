@@ -4,6 +4,7 @@ Portable Claude Code skills and project templates, offered as-is.
 
 - `skills/<name>/SKILL.md`: one skill per folder. `install.sh` links each skill folder into `~/.claude/skills`.
 - `skills/<name>/templates/`: files copied into a project, which then owns them; each carries a provenance line naming the dev-tools commit it was seeded from.
+- `skills/<name>/<part>/test/`: a skill's own test harness. `npm test` runs every one, and `package.json` holds dev dependencies for them only.
 - `scripts/scrub.sh`: the scrub gate. Read the script for what it checks; this file does not restate it.
 
 ---

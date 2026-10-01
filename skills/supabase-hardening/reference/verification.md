@@ -30,6 +30,9 @@ Why: `proconfig = '…'` is `NULL` on an unhardened function, which a `WHERE` or
 - In a migration file, construct the value instead of typing it: `(array['search_path=""'])::text`. It leaves no escape sequence for a tool to decode on the way to disk or to the database.
 - Give the predicate a positive control in both directions, one function that must read `true` and one that must read `false`; a predicate only ever seen returning one value proves nothing about the other.
 
+**Read `security_invoker` from `reloptions` by its value, accepting every spelling of true, and never by matching the text `security_invoker=true`.**
+Why: `reloptions` keeps the value as written, so a view created `with (security_invoker = on)` stores `security_invoker=on` and fails a text match, while a substring test on the option name passes `security_invoker=false`.
+
 **Pin `COLLATE "C"` on both sides when comparing or sorting catalog names against hand-written text.**
 Why: `name` columns carry `C` collation while a text literal sorts under the database default, so two identical sets can sort differently and report a false drift.
 

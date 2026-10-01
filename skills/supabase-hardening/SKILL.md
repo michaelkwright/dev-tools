@@ -55,11 +55,34 @@ This skill owns the database side of a rate-limit RPC: its shape, its grants and
 
 ## Templates
 
-Copy one into the project's migrations folder, fill `{{DEV_TOOLS_SHA}}` with the short HEAD of this dev-tools checkout, rename the worked example, and apply it by hand in the dashboard SQL editor as one paste. Each runs in revoke-first order and ends in a `DO` block that raises on any failed check, which rolls the paste back. They have not yet been run under a test harness, so dry-run a filled copy in a rolled-back transaction (`reference/verification.md`) before applying it.
+Copy one into the project's migrations folder, fill `{{DEV_TOOLS_SHA}}` with the short HEAD of this dev-tools checkout, rename the worked example, and apply it by hand in the dashboard SQL editor as one paste. Each runs in revoke-first order and ends in a `DO` block that raises on any failed check, which rolls the paste back.
+
+The harness in `audit/test/` proves all three. Applied to a database with Supabase's default privileges, each one's `DO` block passes and the audit reports nothing. Each deliberate break (a missing revoke, the `PUBLIC` half of a function revoke, `search_path`, `security_invoker`) makes the block raise and the audit flag the matching rule. A renamed copy is new text, so its own `DO` block is still the check that counts.
 
 - `templates/new-table.sql.tmpl`: revoke, subset grant, RLS, owner-scoped policies, an optional column-level write allowlist, and a check that `anon` holds nothing.
 - `templates/new-view.sql.tmpl`: `security_invoker`, the revoke, the intended grant, and a check of `reloptions` and `relacl`.
 - `templates/new-function.sql.tmpl`: a `SECURITY DEFINER` rate-limit RPC with an empty `search_path`, its server-only counter table, the two-part revoke, a `service_role` grant, and a check of `proacl` and `proconfig`.
+
+## Audit
+
+`audit/posture-audit.sql` is one read-only `SELECT` that lists a project's grant and RLS findings, one row per finding: `rule_id`, `severity` (high, medium, low or info), `object_type`, `object`, `detail` and `fix_hint`. Its header lists every rule and the reference principle behind each.
+
+**Run it before launch, after any ACL migration, and when adopting an existing project.**
+Why: grants drift silently. A DROP + CREATE resets one, and a stray grant reads exactly like an intended one until something lists them all.
+
+- Run the whole file unchanged: `psql "$DATABASE_URL" -f posture-audit.sql`, or paste it into a read-only MCP connector or the dashboard SQL editor. It is one statement, so a tool that returns only the last result set still returns the audit.
+- It needs only a read-only role. It reads `pg_catalog`, calls built-in catalog functions only and executes no project function.
+- Set `exposed_schemas` at the top to the schemas the Data API serves. Schemas left out of it are not audited.
+
+**Accept a finding only through the `exceptions` list at the top of the file: `(rule_id, object, reason)`, with `object` copied exactly from the finding.**
+Why: an exception is visible where a deleted check is not. Each active one prints an info row, one that matches nothing is flagged as stale, and one without a reason is ignored and reported.
+
+- Keep the project's exceptions in a copy of the file in the project. That copy is then the project's own.
+
+**A clean result is not proof of safety; prove behavior with rolled-back probes as the app roles.**
+Why: the audit reads grants and RLS posture, not policy logic, function bodies, Edge Functions or Storage. → `reference/verification.md`
+
+The harness behind the audit and the templates is in `audit/test/`. It runs on PGlite (Postgres in WebAssembly), so it needs no Docker and no live database. From a dev-tools checkout, run `npm install` and then `npm test`. Every probe there first shows the clean case passing and then shows the break changing the result.
 
 ## Reference files
 

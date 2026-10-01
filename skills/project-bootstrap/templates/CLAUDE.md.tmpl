@@ -190,7 +190,7 @@ Why: a verification query is code too, and its false negative looks exactly like
 
 ## Supabase
 
-Depth on RLS, column grants, views and definer functions lives in the dev-tools `supabase-hardening` skill (planned). Only the always-on rules are here.
+Depth on RLS, column grants, views and definer functions lives in the dev-tools `supabase-hardening` skill. Only the always-on rules are here.
 
 **Apply schema changes by hand in the dashboard SQL editor; `supabase db push` is denied at the permission layer (`.claude/settings.json`).**
 Why: the CLI's migration history conflicts with changes applied by hand, and the push fails; the deny rule is committed so it travels with every clone.

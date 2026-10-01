@@ -9,6 +9,7 @@ Portable Claude Code skills and dev tooling, offered as-is. No support is promis
 | [`ci-minutes-audit`](skills/ci-minutes-audit/SKILL.md) | Read-only analyzer of a repo's GitHub Actions history: where the billed minutes went, and which levers would cut them. Includes a default CI shape, verified billing facts, lessons, and a worked case study. |
 | [`doc-system`](skills/doc-system/SKILL.md) | A spec, windowed changelog, forward-only roadmap, decision records and handoffs, held to shape by a vitest contract test. Seeds a new repo or adopts an existing one's docs without rewriting them. |
 | [`project-bootstrap`](skills/project-bootstrap/SKILL.md) | Sets up the planning → Claude Code workflow in a new or existing repo: `CLAUDE.md`, the doc system, a committed permission rule and the Claude.ai planning instructions. |
+| [`supabase-hardening`](skills/supabase-hardening/SKILL.md) | Database-side security for a Supabase project: born-open default grants, gates that look closed and are not, Edge Function and Storage auth, and how to prove each. Includes migration templates and a read-only posture audit, both proven by a PGlite break-probe harness. |
 | [`vitest-suite-speed`](skills/vitest-suite-speed/SKILL.md) | Measure-first method for a slow vitest suite, and the node/jsdom environment split to set up in a new project. |
 
 ## Install

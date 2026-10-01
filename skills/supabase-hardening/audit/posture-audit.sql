@@ -10,11 +10,13 @@
 -- authenticated are the client roles.
 --   T1  high/low   a table with RLS disabled. High when a client role holds any
 --                  privilege on it, low when none does.                  [born-open-defaults]
---   T2  high       anon or PUBLIC holds a privilege other than SELECT on a
---                  table or view. anon never writes.                     [born-open-defaults]
---   T3  medium     authenticated holds TRUNCATE, REFERENCES, TRIGGER or MAINTAIN
---                  on a table or view, the mark of a default grant that was
---                  never revoked. Revoke first, then grant the subset.   [born-open-defaults]
+--   T2  high       anon or PUBLIC holds table-level INSERT, UPDATE or DELETE on
+--                  a table or view. anon never writes.                   [born-open-defaults]
+--   T3  medium     any client role holds TRUNCATE, REFERENCES, TRIGGER or
+--                  MAINTAIN on a table or view, the mark of a default grant
+--                  that was never revoked. The Data API issues none of them,
+--                  but TRUNCATE ignores RLS. A table can fire both T2 and T3.
+--                  Revoke first, then grant the subset.                  [born-open-defaults]
 --   T4  medium     RLS enabled with no policy at all while a client role holds
 --                  a privilege, which is protection by absence.          [gates-that-lie]
 --   C1  high       anon or PUBLIC holds a column-level INSERT or UPDATE. [gates-that-lie]
@@ -166,23 +168,24 @@ findings (rule_id, severity, object_type, object, detail, fix_hint) as (
   where r.relkind in ('r', 'p') and not r.relrowsecurity
 
   union all
-  -- T2: anon or PUBLIC holds a privilege other than SELECT.
+  -- T2: anon or PUBLIC can write rows through a table-level grant.
   select 'T2', 'high', r.object_type, r.object,
-         'anon or PUBLIC can write or alter: ' || string_agg(g.grantee || ' ' || g.privilege_type, ', ' order by g.grantee collate "C", g.privilege_type collate "C"),
+         'anon or PUBLIC can write: ' || string_agg(g.grantee || ' ' || g.privilege_type, ', ' order by g.grantee collate "C", g.privilege_type collate "C"),
          format('revoke all on table %s from public, anon, then grant anon select only on data read before login', r.object)
   from rels r
   join rel_grants g on g.oid = r.oid
-  where g.grantee in ('PUBLIC', 'anon') and g.privilege_type <> 'SELECT'
+  where g.grantee in ('PUBLIC', 'anon') and g.privilege_type in ('INSERT', 'UPDATE', 'DELETE')
   group by r.oid, r.object_type, r.object
 
   union all
-  -- T3: authenticated still holds the never-intended part of the default grant.
+  -- T3: a client role still holds the never-intended part of the default grant.
   select 'T3', 'medium', r.object_type, r.object,
-         'authenticated holds ' || string_agg(g.privilege_type, ', ' order by g.privilege_type collate "C") || ', the mark of a default grant that was never revoked',
-         format('revoke all on table %s from public, anon, authenticated, then grant the intended subset', r.object)
+         'Client roles hold ' || string_agg(g.grantee || ' ' || g.privilege_type, ', ' order by g.grantee collate "C", g.privilege_type collate "C")
+           || ', the mark of a default grant that was never revoked. These are not reachable through the Data API today, but TRUNCATE ignores RLS if any SQL path ever reaches it',
+         format('revoke all on table %s from public, anon, authenticated, then grant the intended subset. Not reachable through the Data API today, but TRUNCATE ignores RLS if any SQL path ever reaches it', r.object)
   from rels r
   join rel_grants g on g.oid = r.oid
-  where g.grantee = 'authenticated' and g.privilege_type in ('TRUNCATE', 'REFERENCES', 'TRIGGER', 'MAINTAIN')
+  where g.privilege_type in ('TRUNCATE', 'REFERENCES', 'TRIGGER', 'MAINTAIN')
   group by r.oid, r.object_type, r.object
 
   union all

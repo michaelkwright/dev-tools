@@ -48,3 +48,6 @@ where p.pronamespace = 'public'::regnamespace and p.proname = 'submit_order';
 
 **`anon` never writes: never grant it `INSERT`, `UPDATE` or `DELETE` on any `public` table, and grant it `SELECT` only on data that is read before login.**
 Why: `anon` is the key every visitor holds, so a write grant to it is an unauthenticated write endpoint held shut only by whatever the policies say today.
+
+**Revoke `TRUNCATE`, `REFERENCES`, `TRIGGER` and `MAINTAIN` from every client role, even though neither PostgREST nor pg_graphql issues them.**
+Why: `TRUNCATE` ignores RLS, so if any SQL path ever reaches it, one user empties every user's rows (`audit/test/rules.test.ts`, "TRUNCATE ignores RLS").

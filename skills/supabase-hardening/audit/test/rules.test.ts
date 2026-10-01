@@ -3,6 +3,7 @@
 // twin that triggers none. Predicates with a spelling or severity split get a
 // positive control in both directions.
 import { afterAll, describe, expect, it } from "vitest";
+import type { PGlite } from "@electric-sql/pglite";
 import {
   applyAsOwner,
   AUDIT_SQL,
@@ -13,6 +14,8 @@ import {
   ruleSet,
   runAudit,
   type Finding,
+  USER_A,
+  USER_B,
 } from "./fixture";
 
 // A table the audit has nothing to say about: revoked, RLS on, one policy.
@@ -23,6 +26,9 @@ alter table public.order_items enable row level security;
 create policy order_items_select_own on public.order_items
   for select to authenticated using (auth.uid() = user_id);
 `;
+
+// anon keeps the leftover default-grant privileges after its DML was revoked.
+const ANON_NON_DML = `${HARDENED_ITEMS} grant select, truncate, references, trigger, maintain on table public.order_items to anon;`;
 
 async function auditOf(sql: string): Promise<Finding[]> {
   const db = await freshDb();
@@ -89,6 +95,22 @@ const CASES: Case[] = [
     expect: ["T2:high"],
     object: "public.order_items",
     twin: `${HARDENED_ITEMS} grant delete on table public.order_items to authenticated;`,
+  },
+  {
+    rule: "T2",
+    name: "anon holds INSERT and the non-DML privileges",
+    positive: `${HARDENED_ITEMS} grant select, insert, truncate, references, trigger, maintain on table public.order_items to anon;`,
+    expect: ["T2:high", "T3:medium"],
+    object: "public.order_items",
+    twin: `${HARDENED_ITEMS} grant select on table public.order_items to anon;`,
+  },
+  {
+    rule: "T3",
+    name: "anon holds only TRUNCATE, REFERENCES, TRIGGER and MAINTAIN",
+    positive: ANON_NON_DML,
+    expect: ["T3:medium"],
+    object: "public.order_items",
+    twin: `${HARDENED_ITEMS} grant select on table public.order_items to anon;`,
   },
   {
     rule: "T3",
@@ -265,7 +287,7 @@ describe("rule coverage", () => {
     const added = ruleSet(
       await runAudit(db, breakText(AUDIT_SQL, "    ('public')\n", "    ('public'),\n    ('private')\n")),
     );
-    expect(added).toEqual(["T1:high", "T2:high"]);
+    expect(added).toEqual(["T1:high", "T2:high", "T3:medium"]);
     await db.close();
     probeLog.push({
       probe: "exposed_schemas: add a schema holding an open table",
@@ -329,5 +351,101 @@ describe("rule coverage", () => {
     expect(keys).toEqual([...keys].sort());
     expect(rows[0].severity).toBe("high");
     expect(rows.at(-1)?.severity).toBe("info");
+  });
+
+  it("T2: the INSERT/UPDATE/DELETE predicate is load-bearing; the old non-SELECT one flags anon's non-DML grants", async () => {
+    const db = await freshDb();
+    expect(await applyAsOwner(db, ANON_NON_DML)).toBeNull();
+    const clean = ruleSet(await runAudit(db));
+    expect(clean).toEqual(["T3:medium"]);
+    const old = breakText(
+      AUDIT_SQL,
+      "  where g.grantee in ('PUBLIC', 'anon') and g.privilege_type in ('INSERT', 'UPDATE', 'DELETE')\n",
+      "  where g.grantee in ('PUBLIC', 'anon') and g.privilege_type <> 'SELECT'\n",
+    );
+    const broken = ruleSet(await runAudit(db, old));
+    expect(broken).toEqual(["T2:high", "T3:medium"]);
+    await db.close();
+    probeLog.push({
+      probe: "T2: restore the old non-SELECT predicate, anon holding only non-DML",
+      clean: `INSERT/UPDATE/DELETE predicate: ${clean.join(", ")}`,
+      broken: `non-SELECT predicate: ${broken.join(", ")}`,
+      changed: JSON.stringify(clean) !== JSON.stringify(broken),
+    });
+  });
+});
+
+describe("behavior: what T3 guards", () => {
+  // RLS on with an owner-scoped policy for every command, rows owned by two users.
+  const OWNED = (grant: string) => `
+    create table public.order_items (id int primary key, user_id uuid not null, qty int);
+    revoke all on table public.order_items from public, anon, authenticated;
+    alter table public.order_items enable row level security;
+    create policy order_items_own on public.order_items
+      for all to authenticated using (auth.uid() = user_id) with check (auth.uid() = user_id);
+    grant ${grant} on table public.order_items to authenticated;
+    insert into public.order_items (id, user_id, qty)
+      values (1, '${USER_A}', 1), (2, '${USER_A}', 2), (3, '${USER_B}', 3);`;
+
+  type Counts = { a: number; b: number };
+  const countRows = async (db: PGlite): Promise<Counts> => {
+    const r = await db.query<{ a: number; b: number }>(`
+      select count(*) filter (where user_id = '${USER_A}')::int as a,
+             count(*) filter (where user_id = '${USER_B}')::int as b
+      from public.order_items`);
+    return r.rows[0];
+  };
+
+  /** As user A (SET LOCAL ROLE + claims), reads what RLS shows, then truncates; counts every owner's rows before the rollback. */
+  async function truncateAsUserA(db: PGlite): Promise<{ visible: number; outcome: string; after: Counts }> {
+    await db.exec("begin");
+    try {
+      await db.exec("set local role authenticated");
+      await db.query("select set_config('request.jwt.claims', $1, true)", [
+        JSON.stringify({ sub: USER_A, role: "authenticated" }),
+      ]);
+      const visible = (await db.query<{ n: number }>("select count(*)::int as n from public.order_items")).rows[0].n;
+      let outcome = "ok";
+      await db.exec("savepoint probe");
+      try {
+        await db.exec("truncate public.order_items");
+      } catch (e) {
+        outcome = (e as { code?: string }).code ?? `error: ${(e as Error).message}`;
+        await db.exec("rollback to savepoint probe");
+      }
+      await db.exec("reset role");
+      return { visible, outcome, after: await countRows(db) };
+    } finally {
+      await db.exec("rollback");
+    }
+  }
+
+  it("TRUNCATE ignores RLS: user A empties user B's rows too, and without the grant it is refused", async () => {
+    const open = await freshDb();
+    expect(await applyAsOwner(open, OWNED("select, truncate"))).toBeNull();
+    const before = await countRows(open);
+    expect(before).toEqual({ a: 2, b: 1 });
+    const granted = await truncateAsUserA(open);
+    // RLS is live for user A: a SELECT sees only A's rows.
+    expect(granted.visible).toBe(2);
+    expect(granted.outcome).toBe("ok");
+    expect(granted.after).toEqual({ a: 0, b: 0 });
+    await open.close();
+
+    const twin = await freshDb();
+    expect(await applyAsOwner(twin, OWNED("select"))).toBeNull();
+    const twinBefore = await countRows(twin);
+    const refused = await truncateAsUserA(twin);
+    expect(refused.outcome).toBe("42501");
+    expect(refused.after).toEqual(twinBefore);
+    await twin.close();
+
+    const fmt = (c: Counts) => `A ${c.a}, B ${c.b}`;
+    probeLog.push({
+      probe: "behavior: TRUNCATE as user A under RLS",
+      clean: `no TRUNCATE grant: ${refused.outcome}; rows ${fmt(twinBefore)} -> ${fmt(refused.after)}`,
+      broken: `TRUNCATE granted: ${granted.outcome} (A sees ${granted.visible}); rows ${fmt(before)} -> ${fmt(granted.after)}`,
+      changed: granted.outcome !== refused.outcome,
+    });
   });
 });

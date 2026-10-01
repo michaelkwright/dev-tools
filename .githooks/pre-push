@@ -2,7 +2,9 @@
 # Blocks the push if the scrub gate reports any hit or error.
 set -u
 root="$(git rev-parse --show-toplevel)" || exit 2
-"$root/scripts/scrub.sh"
+# SCRUB_FROM_HOOK makes scrub.sh ignore --show-terms, so push output never
+# prints a denylist term even if the flag is added here by mistake.
+SCRUB_FROM_HOOK=1 "$root/scripts/scrub.sh"
 rc=$?
 if [ "$rc" -ne 0 ]; then
   echo "pre-push: scrub gate failed (exit $rc); push blocked" >&2

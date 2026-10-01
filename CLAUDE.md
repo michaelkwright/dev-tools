@@ -31,6 +31,18 @@ Why: until the fix lands, the principle is unproven and points at a live weaknes
 
 The pre-push hook runs `scripts/scrub.sh` against a private config kept outside the repo.
 
+**Before the scrub, run the sweep and judge every hit in context.** Each check is `grep -rnIE --exclude-dir=.git '<pattern>' .`, repeated as `git ls-files | grep -E '<pattern>'` for file names:
+- Source-project vocabulary: the source's domain nouns joined with `|`, run with `-iw`, typed at the prompt and never saved in this repo.
+- UUIDs and long hex IDs: `[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[0-9a-f]{12,}`
+- Version strings in the source's format: `v[0-9]+\.[0-9]{2,}`
+- Specific dates: `20[0-9]{2}-[0-9]{2}`
+- Absolute home paths: `(/Users|/home)/[^/[:space:]]+`
+
+Why: a denylist matches only the names it holds, while vocabulary, IDs, formats, dates and paths identify a source without naming it.
+
+**Use `scripts/scrub.sh --show-terms` only to triage hits, and never copy its output into a file or commit message.**
+Why: it prints denylist terms, which exist only in the private config; the hook ignores the flag for the same reason.
+
 **Run `scripts/scrub.sh` yourself before committing, in the foreground and unpiped, and read its exit code directly.**
 Why: a hit caught before the commit costs an edit; a hit caught at push costs a history rewrite.
 

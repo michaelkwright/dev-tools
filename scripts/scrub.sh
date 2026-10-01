@@ -12,6 +12,11 @@
 #                     the denylist. Stems of 4-7 chars are review-only.
 #   allow.txt         optional; generic words removed from the denylist
 #
+# Usage: scrub.sh [--show-terms]
+#   --show-terms  print the matched term beside each hit's location, blocking
+#                 and review-only. For a private terminal only: the output
+#                 then contains denylist terms. Exit codes are unchanged.
+#
 # Exit codes: 0 clean, 1 any hit from checks (a)-(d), 2 config or tool error.
 # Fails closed: anything missing or empty is exit 2, never a silent pass.
 # Compatible with bash 3.2 (no mapfile, no associative arrays).
@@ -25,6 +30,37 @@ REVIEW_MIN_LEN=4
 die() {
   echo "scrub: error: $*" >&2
   exit 2
+}
+
+SHOW_TERMS=0
+for arg in "$@"; do
+  case "$arg" in
+    --show-terms) SHOW_TERMS=1 ;;
+    *) die "unknown argument: $arg (usage: scrub.sh [--show-terms])" ;;
+  esac
+done
+
+# Guard: .githooks/pre-push runs this script with SCRUB_FROM_HOOK=1, and
+# under it --show-terms is ignored, so push output (which can land in shared
+# logs and transcripts) never carries a denylist term. There is deliberately
+# no env var that turns the flag on: an exported one would reach the hook.
+if [ "$SHOW_TERMS" -eq 1 ] && [ -n "${SCRUB_FROM_HOOK:-}" ]; then
+  echo "scrub: --show-terms ignored under the pre-push hook" >&2
+  SHOW_TERMS=0
+fi
+
+# For --show-terms: reads grep -o output, whose first $1 colon-separated
+# fields are the location, and prints "<location>  [<term>]".
+loc_term() {
+  awk -v n="$1" '{
+    s = $0; loc = ""
+    for (i = 0; i < n; i++) {
+      p = index(s, ":")
+      loc = loc (i ? ":" : "") substr(s, 1, p - 1)
+      s = substr(s, p + 1)
+    }
+    print loc "  [" tolower(s) "]"
+  }'
 }
 
 TMP="$(mktemp -d "${TMPDIR:-/tmp}/scrub.XXXXXX")" || die "mktemp failed"
@@ -164,7 +200,15 @@ echo "== (c) denylist: working tree"
 rc=0
 grep -r -n -I -i -w -F -f "$TMP/deny" --exclude-dir=.git . > "$TMP/out_c" 2>"$TMP/err_c" || rc=$?
 case "$rc" in
-  0) cut -d: -f1,2 "$TMP/out_c" | sed 's|^\./||' | sort -u | sed 's/^/HIT: /'; status=1 ;;
+  0)
+    if [ "$SHOW_TERMS" -eq 1 ]; then
+      grep -r -n -o -I -i -w -F -f "$TMP/deny" --exclude-dir=.git . > "$TMP/out_c" 2>"$TMP/err_c" \
+        || { cat "$TMP/err_c" >&2; die "working-tree term grep failed"; }
+      loc_term 2 < "$TMP/out_c" | sed 's|^\./||' | sort -u | sed 's/^/HIT: /'
+    else
+      cut -d: -f1,2 "$TMP/out_c" | sed 's|^\./||' | sort -u | sed 's/^/HIT: /'
+    fi
+    status=1 ;;
   1) ;;
   *) cat "$TMP/err_c" >&2; die "working-tree grep failed (exit $rc)" ;;
 esac
@@ -178,7 +222,14 @@ while IFS= read -r rev; do
   rc=0
   git grep -n -I -i -w -F -f "$TMP/deny" "$rev" > "$TMP/one" 2>"$TMP/err_d" || rc=$?
   case "$rc" in
-    0) cut -d: -f1-3 "$TMP/one" >> "$TMP/out_d" ;;
+    0)
+      if [ "$SHOW_TERMS" -eq 1 ]; then
+        git grep -n -o -I -i -w -F -f "$TMP/deny" "$rev" > "$TMP/one" 2>"$TMP/err_d" \
+          || { cat "$TMP/err_d" >&2; die "git grep term pass failed at $rev"; }
+        loc_term 3 < "$TMP/one" >> "$TMP/out_d"
+      else
+        cut -d: -f1-3 "$TMP/one" >> "$TMP/out_d"
+      fi ;;
     1) ;;
     *) cat "$TMP/err_d" >&2; die "git grep failed at $rev (exit $rc)" ;;
   esac
@@ -193,7 +244,10 @@ echo "== (e) review only: short file-name stems (working tree)"
 if [ -s "$TMP/review" ]; then
   rc=0
   grep -r -n -I -i -w -F -f "$TMP/review" --exclude-dir=.git . > "$TMP/out_e_wt" 2>/dev/null || rc=$?
-  if [ "$rc" -eq 0 ]; then
+  if [ "$rc" -eq 0 ] && [ "$SHOW_TERMS" -eq 1 ]; then
+    grep -r -n -o -I -i -w -F -f "$TMP/review" --exclude-dir=.git . > "$TMP/out_e_wt" 2>/dev/null || true
+    loc_term 2 < "$TMP/out_e_wt" | sed 's|^\./||' | sort -u | sed 's/^/WARN: /'
+  elif [ "$rc" -eq 0 ]; then
     cut -d: -f1,2 "$TMP/out_e_wt" | sed 's|^\./||' | sort -u | sed 's/^/WARN: /'
   fi
 fi

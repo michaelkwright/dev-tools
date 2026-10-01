@@ -1,10 +1,19 @@
 #!/usr/bin/env bash
-# Blocks the push if the scrub gate reports any hit or error.
+# Blocks the push if the scrub gate reports any blocking hit or error.
+# Git passes the remote as $1 and one line per pushed ref on stdin; each
+# pushed tip is scanned along with every ref already on that remote.
 set -u
 root="$(git rev-parse --show-toplevel)" || exit 2
+revs=""
+while read -r _lref lsha _rref _rsha; do
+  # an all-zero local SHA is a branch deletion: nothing new is published
+  case "$lsha" in *[!0]*) revs="$revs --rev $lsha" ;; esac
+done
 # SCRUB_FROM_HOOK makes scrub.sh ignore --show-terms, so push output never
 # prints a denylist term even if the flag is added here by mistake.
-SCRUB_FROM_HOOK=1 "$root/scripts/scrub.sh"
+# $revs is intentionally word-split: SHAs carry no whitespace.
+# shellcheck disable=SC2086
+SCRUB_FROM_HOOK=1 "$root/scripts/scrub.sh" --remote "${1:-origin}" $revs
 rc=$?
 if [ "$rc" -ne 0 ]; then
   echo "pre-push: scrub gate failed (exit $rc); push blocked" >&2

@@ -39,7 +39,7 @@ Every example is anonymized ("a solo-built React + Supabase app"). No project na
 
 ## Maintainer scrub gate
 
-Pushes run `scripts/scrub.sh`, which scans the working tree and full history with gitleaks and against a private denylist kept outside the repo (`~/.config/dev-tools/scrub`, or `SCRUB_CONFIG_DIR`). It fails closed: a missing config or tool blocks the push. The hook in `.githooks/pre-push` only activates in clones that run `git config core.hooksPath .githooks`, so if you cloned this repo you can ignore all of it.
+Pushes run `scripts/scrub.sh`, which scans exactly what is published (the index, the history of every branch, tag and remote ref, commit messages, identities and paths) with gitleaks and against a private denylist and vocabulary kept outside the repo (`~/.config/dev-tools/scrub`, or `SCRUB_CONFIG_DIR`). Untracked and ignored files are never read. It fails closed: a missing config or tool blocks the push. The hook in `.githooks/pre-push` only activates in clones that run `git config core.hooksPath .githooks`, so if you cloned this repo you can ignore all of it.
 
 ## License
 

@@ -32,14 +32,17 @@ Why: until the fix lands, the principle is unproven and points at a live weaknes
 
 The pre-push hook runs `scripts/scrub.sh` against a private config kept outside the repo.
 
-**Before the scrub, run the sweep and judge every hit in context.** Each check is `grep -rnIE --exclude-dir=.git '<pattern>' .`, repeated as `git ls-files | grep -E '<pattern>'` for file names:
-- Source-project vocabulary: the source's domain nouns joined with `|`, run with `-iw`, typed at the prompt and never saved in this repo.
-- UUIDs and long hex IDs: `[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}|[0-9a-f]{12,}`
-- Version strings in the source's format: `v[0-9]+\.[0-9]{2,}`
-- Specific dates: `20[0-9]{2}-[0-9]{2}`
-- Absolute home paths: `(/Users|/home)/[^/[:space:]]+`
+**The gate scans exactly the published surface: the index, the history of every local branch and tag and of every ref on the remote, commit and tag messages, author and committer identities, and every path.**
+Why: a working-tree scan floods on what is never published, like `node_modules`, and misses what is, like other refs, messages and identities.
 
-Why: a denylist matches only the names it holds, while vocabulary, IDs, formats, dates and paths identify a source without naming it.
+**The denylist, absolute home paths and gitleaks block; short stems, `vocab.d` vocabulary, UUIDs and long hex IDs, source-format version strings and non-noreply identities are review-only, so judge every WARN in context.**
+Why: vocabulary, IDs, formats and paths identify a source without naming it, but each check also matches innocent text that only a reader can clear.
+
+**Write home paths in published files as `~/`, never as an absolute path.**
+Why: an absolute home path names the account it came from, so the gate blocks it.
+
+**Before the scrub, sweep for specific dates and judge every hit in context: `git grep -nIE '20[0-9]{2}-[0-9]{2}'`, and `git ls-files | grep -E '20[0-9]{2}-[0-9]{2}'` for file names.**
+Why: dates are the one identifying pattern the gate does not check, since most dates in a doc are harmless.
 
 **Use `scripts/scrub.sh --show-terms` only to triage hits, and never copy its output into a file or commit message.**
 Why: it prints denylist terms, which exist only in the private config; the hook ignores the flag for the same reason.
@@ -56,8 +59,11 @@ Why: a stem that looks like a common word can still be the one term that identif
 **A hit in history means STOP and report; never rewrite history unasked.**
 Why: rewriting pushed history breaks every clone, and whether to do it is the owner's call.
 
-**To add a source project, create `denylist.d/<project>.txt` with its curated identifiers, and add a `sources.txt` line naming the repo and the subpaths whose file basenames the gate turns into denylist stems.**
-Why: curated terms catch the names people use; generated stems catch the names the code uses.
+**To add a source project, create `denylist.d/<project>.txt` with its curated identifiers, `vocab.d/<project>.txt` with its distinctive domain nouns, and a `sources.txt` line naming the repo and the subpaths whose file basenames the gate turns into denylist stems.**
+Why: curated terms catch the names people use, vocabulary catches the domain they work in, and generated stems catch the names the code uses.
+
+**A non-noreply commit identity is a WARN until its email is added to the private `identity-allow.txt`, and only the owner adds one.**
+Why: an identity is published with every commit, and only its owner can say it is meant to be public.
 
 ---
 

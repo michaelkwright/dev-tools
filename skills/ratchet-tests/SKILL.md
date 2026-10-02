@@ -45,8 +45,8 @@ Why: a helper list nobody checks decays into a rubber stamp that blesses whateve
 **A registry of sites compliant by a rule the walker cannot infer is earned, never asserted, and the scan is pinned to exactly its registered sites.**
 Why: recognition by name lets a same-named impostor in, and the exact pin turns any widening into a loud failure instead of a silent blessing.
 
-**The guard fails on its own failure: zero enumerated sites (g), any file it cannot parse, by name (h), and any declared shape with no sites unless declared absent with a reason (i).**
-Why: a walker that finds nothing and a repo with nothing wrong must never be indistinguishable.
+**The guard fails on its own failure: zero enumerated sites (g), any file it cannot parse, by name (h), and any declared shape with no sites unless declared absent with a reason (i); absent declarations are checked both ways, so a shape declared absent that has a site also fails (i).**
+Why: a walker that finds nothing and a repo with nothing wrong must never be indistinguishable, and a declaration is an entry; it goes stale like one.
 
 **Prove the walker on synthetic sources, including what it must NOT flag.**
 Why: a guard built on a walker passes vacuously if the walker silently stops matching, and an over-broad one buries the real sites in false ones.
@@ -125,7 +125,7 @@ From this skill's folder (`skills/ratchet-tests/` in the dev-tools checkout):
 7. Review `CONFIG` in `walker.ts`: `root` assumes this layout; also `testRoots`, the `exclude` globs for golden files, and `temporalKey` (add `(At|Date|On)$` for camelCase keys). Keep `TEMPORAL_KEYS` in the test in step with it.
 8. `npm pkg set scripts.regen:fixture-dates="node src/test/ratchets/fixture-date-anchoring/regen.ts"`
 9. `npm run regen:fixture-dates` to seed `snapshot.json`, and read the summary.
-10. Run `npx vitest run src/test/ratchets/fixture-date-anchoring/` in the foreground and read its exit code. If rule (i) fails on a shape the project genuinely lacks (on first adoption `anchored` usually has no sites, since `clock.ts` is new), declare it `{ absent: "<reason>" }` in `SHAPES` in the test and re-run; set it back to `"required"` once a site exists, since an absent declaration is not checked against a count above zero. Then raise `MIN_SITES` toward the real site count. If the project's default vitest environment is a DOM one, add `// @vitest-environment node` as the test's first line.
+10. Run `npx vitest run src/test/ratchets/fixture-date-anchoring/` in the foreground and read its exit code. If rule (i) fails on a shape the project genuinely lacks (on first adoption `anchored` usually has no sites, since `clock.ts` is new), declare it `{ absent: "<reason>" }` in `SHAPES` in the test and re-run; the ratchet will fail and tell you when an absent shape gains a site. Then raise `MIN_SITES` toward the real site count. If the project's default vitest environment is a DOM one, add `// @vitest-environment node` as the test's first line.
 11. If the project typechecks with `tsc`, its tsconfig needs `allowImportingTsExtensions` with `noEmit`, since the copied files import each other by `.ts` path.
 12. Prove it: copy an existing test file that the walker reads, append `export const probeOrder = { created_at: new Date("2000-01-02") };` to it, and run step 10's command. It must exit 1 with a rule (a) failure naming `probeOrder :: created_at`. Restore the file from the copy, confirm with `diff` that nothing differs, and re-run step 10's command green.
 

@@ -44,7 +44,8 @@ const STATUSES: StatusConfig = {
   FIXED_BY_DESIGN: { kind: "exempt" },
 };
 
-// A shape with no site fails, unless declared { absent: "<reason>" }.
+// A shape with no site fails, unless declared { absent: "<reason>" }; a shape
+// declared absent fails once it has a site.
 const SHAPES: ShapeConfig = {
   anchored: "required",
   computed: "required",

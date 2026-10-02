@@ -202,6 +202,20 @@ describe("ratchet-core fails each rule on its own", () => {
     expect(rulesOf(i).rules).toEqual(["i"]);
   });
 
+  it("(i) a shape declared absent with no sites passes", () => {
+    const i = base();
+    expect(i.shapeCounts.not_date_shaped ?? 0).toBe(0);
+    expect(rulesOf(i).rules).toEqual([]);
+  });
+
+  it("(i) a shape declared absent that has a site fails, naming the shape and the count", () => {
+    const i = base();
+    i.shapes = { ...i.shapes, anchored: { absent: "clock.ts is new" } };
+    const r = rulesOf(i);
+    expect(r.rules).toEqual(["i"]);
+    expect(r.messages[0]).toBe('compliance shape "anchored" is declared absent but has 1 site(s): change it to required.');
+  });
+
   it("(i) a counted shape that is not declared fails", () => {
     const i = base();
     i.shapeCounts = { ...i.shapeCounts, guessed: 2 };

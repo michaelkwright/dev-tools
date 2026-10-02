@@ -19,7 +19,7 @@
 //   (f) an entry claiming a derived status
 //   (g) zero enumerated sites (or fewer than minSites)
 //   (h) any file the walker could not parse
-//   (i) a declared compliance shape with no sites, unless declared absent
+//   (i) a required compliance shape with no sites, or an absent one with any
 //   (j) a key field whose name or value looks like a line number
 // plus "snapshot" for a malformed snapshot or duplicate entry keys, and
 // "walker" for duplicate site keys or an undeclared derived status on a site.
@@ -34,6 +34,10 @@
 // The guard fails on its own failure: (g), (h) and (i).
 // Why: a walker that finds nothing and a repo with nothing wrong must never be
 // indistinguishable.
+//
+// A shape declared absent is checked both ways: (i) also fails once it has a
+// site.
+// Why: a declaration is an entry; it goes stale like one.
 //
 // Keys are a declared tuple of fields, and none of them may be a line number.
 // Why: a line number moves on every unrelated edit above it, which turns the
@@ -59,7 +63,7 @@ export type StatusKind = "worklist" | "exempt" | "derived" | "retired";
 
 export type StatusConfig = Record<string, { kind: StatusKind; note?: string }>;
 
-/** "required": at least one compliant site must have this shape. { absent }: zero is allowed, for this reason. */
+/** "required": at least one compliant site must have this shape. { absent }: none may, for this reason. */
 export type ShapeConfig = Record<string, "required" | { absent: string }>;
 
 export type RuleId = "a" | "b" | "c" | "d" | "e" | "f" | "g" | "h" | "i" | "j" | "snapshot" | "walker";
@@ -212,7 +216,7 @@ export function checkRatchet(input: RatchetInput): RatchetFailure[] {
     );
   }
 
-  // (i) every declared compliance shape is represented.
+  // (i) every required compliance shape is represented, and no absent one is.
   for (const [shape, decl] of Object.entries(input.shapes)) {
     const n = input.shapeCounts[shape] ?? 0;
     if (decl === "required") {
@@ -223,8 +227,13 @@ export function checkRatchet(input: RatchetInput): RatchetFailure[] {
             `shape is genuinely gone; then declare it { absent: "<reason>" }.`,
         );
       }
-    } else if (typeof decl?.absent !== "string" || decl.absent.trim() === "") {
+      continue;
+    }
+    if (typeof decl?.absent !== "string" || decl.absent.trim() === "") {
       fail("i", `compliance shape "${shape}" is declared absent with an empty reason; say why it has no sites.`);
+    }
+    if (n >= 1) {
+      fail("i", `compliance shape "${shape}" is declared absent but has ${n} site(s): change it to required.`);
     }
   }
   for (const shape of Object.keys(input.shapeCounts)) {

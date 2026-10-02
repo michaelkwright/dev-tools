@@ -71,3 +71,10 @@ Why: an identity is published with every commit, and only its owner can say it i
 
 **A skill folder always ships with its `SKILL.md` in the same commit.**
 Why: a folder without one is not a loadable skill, yet it still looks like one to anyone installing.
+
+---
+
+## Scripts
+
+**Match whole words with `grep -w`, `git grep -P` or a JS regex, never with `\b`, `\<`, `\>` or `\B` in `grep -E`, `git grep -E`, `sed -E` or `awk`.**
+Why: on macOS, `git grep -E`, `sed -E` and `awk` accept those escapes and silently match nothing, so a check written with them passes without checking.

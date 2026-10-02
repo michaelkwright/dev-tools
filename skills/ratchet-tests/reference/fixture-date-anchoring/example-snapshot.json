@@ -1,0 +1,31 @@
+{
+  "$comment": [
+    "Example shape only; never copied into a project. regen.ts seeds the real snapshot.json.",
+    "Entries are sorted by file, symbol, key, then ordinal, and carry exactly those four key",
+    "fields, a status, and (for FIXED_BY_DESIGN only) a justification."
+  ],
+  "entries": [
+    {
+      "file": "src/test/invoiceFormat.test.ts",
+      "symbol": "it:prints the invoice date as written > order",
+      "key": "invoice_date",
+      "ordinal": 0,
+      "status": "FIXED_BY_DESIGN",
+      "justification": "Asserts formatting of a fixed calendar date; no cutoff computed from now reads it."
+    },
+    {
+      "file": "src/test/orderArchive.test.ts",
+      "symbol": "describe:archive > it:hides orders older than the window > rows",
+      "key": "created_at",
+      "ordinal": 0,
+      "status": "KNOWN_OPEN"
+    },
+    {
+      "file": "src/test/orderArchive.test.ts",
+      "symbol": "describe:archive > it:hides orders older than the window > rows",
+      "key": "created_at",
+      "ordinal": 1,
+      "status": "KNOWN_OPEN"
+    }
+  ]
+}

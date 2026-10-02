@@ -12,20 +12,37 @@
 # Untracked and gitignored files are never read.
 #
 # Config directory: $SCRUB_CONFIG_DIR, default ~/.config/dev-tools/scrub
-#   denylist.d/*.txt    one term per line (case-insensitive, whole-word match
-#                       as grep -w: letters, digits and "_" are word characters)
+#   denylist.d/*.txt    one term per line (see "Term matching" below)
 #   sources.txt         one source repo per line: <repo path> <subpath>...
 #                       File-name stems (8+ chars) ever tracked under those
 #                       subpaths, across that repo's full history, are added to
-#                       the denylist. Stems of 4-7 chars are review-only.
+#                       the denylist. Stems of 4-7 chars are review-only, and
+#                       match as whole words as grep -w does.
 #   allow.txt           optional; generic words removed from generated stems
-#   vocab.d/*.txt       review-only vocabulary (case-insensitive, bounded match;
-#                       see "Vocabulary boundaries" below)
+#   vocab.d/*.txt       review-only vocabulary (see "Term matching" below)
 #   identity-allow.txt  optional; emails that are not flagged as identities
 #
-# Vocabulary boundaries (the one statement of this rule; docs point here).
-# A vocab entry matches case-insensitively, as a literal, wherever both of its
-# ends fall on a boundary. A boundary is:
+# Term matching (the one statement of this rule; docs point here).
+# It covers both term lists: the denylist (curated terms and long stems) and
+# the vocabulary. Curated denylist entries and vocabulary entries are
+# expanded into variants; generated file-name stems are matched in their own
+# spelling only, because a stem's only identifying signal is its exact
+# compound, and split into words or inflected it becomes ordinary prose.
+# Each expanded entry gets these variants when the lists load:
+#   - Words: the entry splits into words at "_", "-", whitespace and camelCase
+#     humps (the hump rule below), so order_item, orderItem, OrderItem and
+#     "order item" are each the words order + item.
+#   - Separators: an entry of two or more words gets its words joined by "_",
+#     by "-", by a space and by nothing; matching ignores case, so the joined
+#     form also covers camelCase and PascalCase. One word gets no such forms.
+#   - Inflection, on the last word only and only when it has 3+ characters:
+#     no final "s" adds "s"; a final s, x, z, ch or sh adds "es"; consonant +
+#     "y" adds the "ies" form; "ies" adds the "y" form; a final "s" that is not
+#     "ss" adds the form without it. Each applies to every separator form.
+#   - The entry's own spelling is always kept, variants are deduplicated, and
+#     a hit names the entry, never the variant.
+# A variant or stem matches case-insensitively, as a literal, wherever both
+# of its ends fall on a boundary. A boundary is:
 #   - the start or end of the line;
 #   - any character that is not an ASCII letter or digit, so "_", "-", ".",
 #     "/" and whitespace all count (order_TERM_id matches);
@@ -34,9 +51,10 @@
 #     before the last capital that is followed by a lowercase letter, so
 #     "HTTPServer" splits before "Server" (TERMValue matches).
 # A longer run of one case has no boundary inside it: xtermy and XTERMY do not
-# match. Nothing inside the entry is checked, and an entry holding "_", "-" or
-# a space matches only that exact spelling. Inflected forms (plurals) are not
-# matched: list each form that matters. Stems are the denylist's job.
+# match. Nothing inside a variant is checked.
+# Vocabulary variant expansion makes the scan slower by design, a cost
+# accepted for recall; a faster matcher that looks up each span in a hash is
+# a known follow-up.
 #
 # Checks. Blocking: gitleaks, the denylist, absolute home paths. Review-only
 # (WARN, never failing): short stems, vocabulary, UUIDs and long hex IDs,
@@ -160,10 +178,11 @@ while IFS= read -r line || [ -n "$line" ]; do
   [ -s "$TMP/paths" ] || die "source yielded no tracked files: $repo"
   # Two forms per file: basename minus its last extension, and basename cut
   # at the first dot. Each is kept by length (long: >= MIN_LEN, short: review).
+  # Case is kept so the variant generator can split camelCase stems.
   sort -u "$TMP/paths" | awk -F/ -v min="$MIN_LEN" -v rmin="$REVIEW_MIN_LEN" \
     -v lf="$TMP/stems_long" -v sf="$TMP/stems_short" '
     function emit(s,   n) {
-      s = tolower(s); n = length(s)
+      n = length(s)
       if (n >= min) print s >> lf
       else if (n >= rmin) print s >> sf
     }
@@ -174,17 +193,82 @@ while IFS= read -r line || [ -n "$line" ]; do
 done < "$CFG/sources.txt"
 [ "$nsrc" -gt 0 ] || die "no source repos listed in $CFG/sources.txt"
 
-# normalize: lowercase, no CR, no blanks or comments, unique
-norm() { tr -d '\r' | tr 'A-Z' 'a-z' | grep -v -e '^[[:space:]]*$' -e '^#' | sort -u || true; }
+# clean: no CR, no blanks or comments, case kept, unique
+clean() { tr -d '\r' | grep -v -e '^[[:space:]]*$' -e '^#' | sort -u || true; }
+# normalize: clean, then lowercase and unique
+norm() { clean | tr 'A-Z' 'a-z' | sort -u; }
 count() { wc -l < "$1" | tr -d ' '; }
 # minus <a> <b> <out>: lines of <a> not in <b>
 minus() {
   if [ -s "$2" ]; then grep -v -x -F -f "$2" "$1" > "$3" || true; else cp "$1" "$3"; fi
 }
+# minus_ci <a> <b> <out>: lines of <a> whose lowercase form is not in <b>
+minus_ci() {
+  LC_ALL=C awk -v bf="$2" 'BEGIN { while ((getline l < bf) > 0) b[l] = 1 }
+    !(tolower($0) in b)' "$1" > "$3" || die "awk failed"
+}
+
+# expand <entries> <out> [<exclude>]: the variant generator (see "Term
+# matching" above). Writes <out>.v, every lowercased variant, and <out>.o, the
+# lowercased entry each came from, line for line. Variants in <exclude>.v are
+# left out.
+expand() {
+  : > "$2.v"; : > "$2.o"
+  LC_ALL=C awk -v vf="$2.v" -v of="$2.o" -v xf="${3:+$3.v}" '
+    function hump(a, b, c) {
+      return (a ~ /[a-z0-9]/ && b ~ /[A-Z]/) || (a ~ /[A-Z]/ && b ~ /[A-Z]/ && c ~ /[a-z]/)
+    }
+    # add(v, r): v is a variant of entry e at rank r (0: the entry itself,
+    # 1: a separator form, 2: inflected); a variant shared by two entries
+    # names the closer one
+    function add(v, r) {
+      if (v in X) return
+      if (!(v in E) || r < R[v] || (r == R[v] && e < E[v])) { E[v] = e; R[v] = r }
+    }
+    BEGIN { if (xf != "") while ((getline l < xf) > 0) X[l] = 1
+      S[1] = "_"; S[2] = "-"; S[3] = " "; S[4] = "" }
+    { e = tolower($0); add(e, 0)
+      n = 0; w = ""
+      for (i = 1; i <= length($0); i++) {
+        a = substr($0, i, 1)
+        if (a ~ /[-_[:space:]]/) { if (w != "") W[++n] = w; w = ""; continue }
+        w = w a
+        if (hump(a, substr($0, i + 1, 1), substr($0, i + 2, 1))) { W[++n] = w; w = "" }
+      }
+      if (w != "") W[++n] = w
+      if (n == 0) next
+      t = tolower(W[n]); k = length(t); m = 0
+      if (k >= 3) {
+        if (t !~ /s$/) F[++m] = t "s"
+        if (t ~ /(s|x|z|ch|sh)$/) F[++m] = t "es"
+        if (t ~ /[b-df-hj-np-tv-z]y$/) F[++m] = substr(t, 1, k - 1) "ies"
+        if (t ~ /ies$/) F[++m] = substr(t, 1, k - 3) "y"
+        if (t ~ /s$/ && t !~ /ss$/) F[++m] = substr(t, 1, k - 1)
+      }
+      for (j = (n > 1 ? 1 : 4); j <= 4; j++) {
+        p = ""
+        for (q = 1; q < n; q++) p = p tolower(W[q]) S[j]
+        add(p t, 1)
+        for (q = 1; q <= m; q++) add(p F[q], 2)
+      } }
+    END { for (v in E) { print v > vf; print E[v] > of } }' "$1" \
+    || die "variant generator failed"
+}
+
+# add_plain <entries> <out>: appends each lowercased entry to expand's <out>,
+# in its own spelling only, unless it is already a variant there
+add_plain() {
+  LC_ALL=C awk -v vf="$2.v" -v of="$2.o" '
+    BEGIN { while ((getline l < vf) > 0) X[l] = 1; close(vf) }
+    { e = tolower($0); if (e in X) next; X[e] = 1; print e >> vf; print e >> of }' "$1" \
+    || die "awk failed"
+}
 
 norm < "$TMP/curated" > "$TMP/curated_n"
 [ -s "$TMP/curated_n" ] || die "no entries under $CFG/denylist.d/*.txt"
+clean < "$TMP/curated" > "$TMP/curated_c"
 norm < "$TMP/stems_long" > "$TMP/stems_n"
+clean < "$TMP/stems_long" > "$TMP/stems_c"
 
 # The allowlist may only filter generated stems. An entry that is also a
 # curated term is a configuration error.
@@ -199,18 +283,26 @@ if [ -f "$CFG/allow.txt" ]; then
 fi
 [ -f "$CFG/identity-allow.txt" ] && norm < "$CFG/identity-allow.txt" > "$TMP/id_allow"
 
-minus "$TMP/stems_n" "$TMP/allow" "$TMP/stems_kept"
+minus_ci "$TMP/stems_c" "$TMP/allow" "$TMP/stems_kept_c"
+norm < "$TMP/stems_kept_c" > "$TMP/stems_kept"
 cat "$TMP/curated_n" "$TMP/stems_kept" | sort -u > "$TMP/deny"
 [ -s "$TMP/deny" ] || die "assembled denylist is empty"
+# curated terms get variants; stems are kept in their own spelling only
+expand "$TMP/curated_c" "$TMP/deny_x"
+add_plain "$TMP/stems_kept" "$TMP/deny_x"
 
 # review-only terms: short stems and vocabulary not already denied (stems
-# also not allowed)
+# also not allowed); vocabulary variants that are also denylist variants are
+# left to the denylist
 norm < "$TMP/stems_short" > "$TMP/short_all"
 minus "$TMP/short_all" "$TMP/deny" "$TMP/short_a"
 minus "$TMP/short_a" "$TMP/allow" "$TMP/review"
 norm < "$TMP/vocab" > "$TMP/vocab_n"
 [ -s "$TMP/vocab_n" ] || die "no entries under $CFG/vocab.d/*.txt"
 minus "$TMP/vocab_n" "$TMP/deny" "$TMP/vocab_kept"
+clean < "$TMP/vocab" > "$TMP/vocab_c"
+minus_ci "$TMP/vocab_c" "$TMP/deny" "$TMP/vocab_kept_c"
+expand "$TMP/vocab_kept_c" "$TMP/vocab_x" "$TMP/deny_x"
 
 n_cur="$(count "$TMP/curated_n")"
 n_stems="$(count "$TMP/stems_n")"
@@ -218,7 +310,7 @@ n_kept="$(count "$TMP/stems_kept")"
 n_total="$(count "$TMP/deny")"
 n_review="$(count "$TMP/review")"
 n_vocab="$(count "$TMP/vocab_kept")"
-echo "scrub: counts curated=$n_cur stems=$n_stems allow_removed=$((n_stems - n_kept)) overlap=$((n_cur + n_kept - n_total)) total=$n_total review_only=$n_review vocab=$n_vocab" >&2
+echo "scrub: counts curated=$n_cur stems=$n_stems allow_removed=$((n_stems - n_kept)) overlap=$((n_cur + n_kept - n_total)) total=$n_total review_only=$n_review vocab=$n_vocab deny_variants=$(count "$TMP/deny_x.v") vocab_variants=$(count "$TMP/vocab_x.v")" >&2
 
 # ---- published refs ----------------------------------------------------------
 # tips: "<sha> <label>" for every published ref; tip_shas: the unique SHAs
@@ -305,18 +397,20 @@ grep_into() {
   [ "$rc" -le 1 ] || { cat "$TMP/err_g" >&2; die "grep failed (exit $rc)"; }
 }
 
-# bounded_into <out> [-r] <terms> <target>: the vocabulary matcher (see
-# "Vocabulary boundaries" above), with grep_into's output. grep -i -F finds
-# every line holding a term anywhere; awk then keeps each occurrence whose
-# two ends are boundaries. Bytes, not locale characters, so LC_ALL=C.
+# bounded_into <out> [-r] <terms> <target>: the term matcher (see "Term
+# matching" above), with grep_into's output except that each match is shown
+# as the entry it came from. <terms>.v and <terms>.o are expand's output.
+# grep -i -F finds every line holding a variant anywhere; awk then keeps each
+# occurrence whose two ends are boundaries. Bytes, not locale characters, so
+# LC_ALL=C.
 bounded_into() {
   local out="$1" rec="" rc=0
   shift
   if [ "$1" = -r ]; then rec=-r; shift; fi
   # shellcheck disable=SC2086
-  grep -n -I -i -F $rec -f "$1" "$2" > "$TMP/g_cand" 2>"$TMP/err_g" || rc=$?
+  grep -n -I -i -F $rec -f "$1.v" "$2" > "$TMP/g_cand" 2>"$TMP/err_g" || rc=$?
   [ "$rc" -le 1 ] || { cat "$TMP/err_g" >&2; die "grep failed (exit $rc)"; }
-  LC_ALL=C awk -v tf="$1" -v rec="${rec:+1}" '
+  LC_ALL=C awk -v tf="$1.v" -v ef="$1.o" -v rec="${rec:+1}" '
     function al(c) { return c ~ /[A-Za-z0-9]/ }
     # edge(s, i): 1 if a boundary falls between characters i and i+1 of s
     function edge(s, i,   a, b, c) {
@@ -325,7 +419,7 @@ bounded_into() {
       return !al(a) || !al(b) || (a ~ /[a-z0-9]/ && b ~ /[A-Z]/) \
         || (a ~ /[A-Z]/ && b ~ /[A-Z]/ && c ~ /[a-z]/)
     }
-    BEGIN { while ((getline t < tf) > 0) if (t != "") T[++n] = t
+    BEGIN { while ((getline t < tf) > 0) { getline e < ef; if (t != "") { T[++n] = t; E[n] = e } }
       if (n == 0) exit 2 }
     { s = $0; f = ""
       if (rec) { i = index(s, ":"); f = substr(s, 1, i); s = substr(s, i + 1) }
@@ -335,23 +429,23 @@ bounded_into() {
         t = T[k]; w = length(t); o = 0
         while ((p = index(substr(lo, o + 1), t)) > 0) {
           o += p
-          if (edge(s, o - 1) && edge(s, o + w - 1)) print f ln substr(s, o, w)
+          if (edge(s, o - 1) && edge(s, o + w - 1)) print f ln E[k]
         }
-      } }' "$TMP/g_cand" > "$out" || die "vocabulary matcher failed"
+      } }' "$TMP/g_cand" > "$out" || die "term matcher failed"
 }
 
 # scan <tag> <check> <mode> <pattern> [<drop-regex>]
 #   mode terms: <pattern> is a file of fixed strings, case-insensitive whole
-#   words. mode bounded: the same, but matched by bounded_into. mode regex:
-#   <pattern> is a case-sensitive extended regex. Matches equal to
-#   <drop-regex> are discarded.
+#   words. mode bounded: <pattern> is expand's <out>, matched by
+#   bounded_into. mode regex: <pattern> is a case-sensitive extended regex.
+#   Matches equal to <drop-regex> are discarded.
 scan() {
   local tag="$1" check="$2" mode="$3" pat="$4" drop="${5:-}" lower=0 m=grep_into
   if [ "$mode" = terms ]; then
     [ -s "$pat" ] || return 0
     set -- -i -w -F -f "$pat"; lower=1
   elif [ "$mode" = bounded ]; then
-    [ -s "$pat" ] || return 0
+    [ -s "$pat.v" ] || return 0
     set -- "$pat"; lower=1; m=bounded_into
   else
     set -- -E -e "$pat"
@@ -439,7 +533,7 @@ fi
 gitleaks_run message dir "$TMP/meta"
 
 echo "== (2) denylist"
-scan HIT denylist terms "$TMP/deny"
+scan HIT denylist bounded "$TMP/deny_x"
 
 echo "== (3) absolute home paths"
 scan HIT home-path regex "$HOME_PATH_RE"
@@ -448,7 +542,7 @@ echo "== (4) review only: short file-name stems"
 scan WARN stems terms "$TMP/review"
 
 echo "== (5) review only: vocabulary"
-scan WARN vocab bounded "$TMP/vocab_kept"
+scan WARN vocab bounded "$TMP/vocab_x"
 
 echo "== (6) review only: UUIDs and long hex IDs"
 scan WARN hex-id regex "$HEX_ID_RE" "$HEX_ID_ALLOW_RE"

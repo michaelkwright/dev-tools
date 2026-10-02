@@ -72,6 +72,9 @@ Why: an identity is published with every commit, and only its owner can say it i
 **A skill folder always ships with its `SKILL.md` in the same commit.**
 Why: a folder without one is not a loadable skill, yet it still looks like one to anyone installing.
 
+**A subagent is not a cold reader, so never count its run as a cold-agent proof.**
+Why: it inherits user-level context, including identity details the host injects and the descriptions of account-level skills, so what it knows need not come from the repo.
+
 ---
 
 ## Scripts

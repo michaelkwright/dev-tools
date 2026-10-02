@@ -51,7 +51,7 @@ Why: a catalog read proves what is granted, not what works, and a probe without 
 
 ## Rate limits: where this skill stops
 
-This skill owns the database side of a rate-limit RPC: its shape, its grants and its server-clock bucket. Whether every paid egress passes a rate limit before the request leaves is the application side, and belongs to the dev-tools `llm-call-hygiene` skill where that skill is installed. Where it is not, the one rule in `reference/edge-functions-and-storage.md` ("Run the limit before any paid egress") stands in for it.
+This skill owns the database side of a rate-limit RPC: its shape, its grants and its server-clock bucket. Whether every paid egress passes a rate limit before the request leaves is the application side, and the one rule in `reference/edge-functions-and-storage.md` ("Run the limit before any paid egress") covers it. The call-site detail behind that rule belongs to the dev-tools `llm-call-hygiene` skill (planned).
 
 ## Templates
 

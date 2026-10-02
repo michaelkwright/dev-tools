@@ -99,6 +99,11 @@ describe("the walker sees what it claims to see", () => {
     expect(v.map((s) => s.literal)).toEqual(["2000-01-"]);
   });
 
+  it("flags a literal date inside a Date constructor, and not a clock-relative one", () => {
+    const v = violations(`const order = { created_at: new Date("2000-01-15"), shipped_at: new Date(2000, 0, 15), until: new Date(Date.now()) };`);
+    expect(v.map((s) => s.key)).toEqual(["created_at", "shipped_at"]);
+  });
+
   it("flags a date under every temporal key shape", () => {
     for (const k of TEMPORAL_KEYS) {
       expect(violations(`const item = { ${k}: "2000-01-15" };`), k).toHaveLength(1);

@@ -13,10 +13,15 @@
 // What it reports. Every object-literal property whose key matches
 // CONFIG.temporalKey is a site, keyed (file, symbol, key, ordinal):
 //   violation        the value is a date-shaped string literal, or a template
-//                    literal whose leading text is date-shaped
+//                    literal whose leading text is date-shaped; or a literal
+//                    date built by a constructor: new Date(<date-shaped
+//                    literal>), Date.parse(<same>), new Date(<two or more
+//                    numeric literals>), Date.UTC(<numeric literals>), or a
+//                    method called on one (`new Date("…").toISOString()`)
 //   anchored         compliant: a call to one of CONFIG.anchorHelpers
 //   computed         compliant: any other expression (a variable, new Date(),
-//                    another call, null)
+//                    new Date(Date.now() - n), new Date(daysAgo(3)), another
+//                    call, null)
 //   not_date_shaped  compliant: a string literal that is not a date
 // A file that calls one of CONFIG.clockPinCalls derives CONFIG.clockPinnedStatus
 // for its violations, which then need no snapshot entry.
@@ -24,6 +29,11 @@
 // A template literal's head counts, and "YYYY-MM" is enough to be date-shaped.
 // Why: a fixture written as `2000-01-${day}T…` has the partial head "2000-01-",
 // and a pattern demanding a full YYYY-MM-DD misses exactly that shape.
+//
+// A literal date inside a Date constructor is a violation like a bare one.
+// Why: `created_at: new Date("2000-01-02")` ages out of a rolling window on
+// exactly the day the string would; wrapping it changes the type, not the
+// expiry.
 //
 // It is an AST walk with the TypeScript compiler's JS API, never a grep.
 // Why: a grep cannot see the key, which is the whole signal, and it fires on a
@@ -46,7 +56,11 @@
 // What it cannot see, recorded here rather than implied:
 //   - a literal returned from a helper or held in a variable, then used as the
 //     value (`created_at: OLD`), which reads as computed;
-//   - a literal inside a call, e.g. `new Date("…")`, which reads as computed;
+//   - new Date(<one numeric literal>), an epoch number, which reads as
+//     computed: `new Date(0)` is as often a sentinel as a fixture date, and
+//     no shape tells the two apart;
+//   - a literal date passed through any other call (`toDate("…")`), which
+//     reads as computed;
 //   - a date literal under a key the regex does not match;
 //   - golden baselines excluded by CONFIG.exclude, deliberately: anchoring one
 //     defeats its purpose.
@@ -230,6 +244,51 @@ function literalText(e: ts.Expression): string | null {
   return null;
 }
 
+const isDate = (e: ts.Expression): boolean => ts.isIdentifier(e) && e.text === "Date";
+
+/** A numeric literal, optionally signed. */
+function isNumber(e: ts.Expression): boolean {
+  const u = unwrap(e);
+  if (ts.isNumericLiteral(u)) return true;
+  return (
+    ts.isPrefixUnaryExpression(u) &&
+    (u.operator === ts.SyntaxKind.MinusToken || u.operator === ts.SyntaxKind.PlusToken) &&
+    ts.isNumericLiteral(u.operand)
+  );
+}
+
+const dateShapedText = (e: ts.Expression, dateShaped: RegExp): string | null => {
+  const t = literalText(unwrap(e));
+  return t !== null && dateShaped.test(t) ? t : null;
+};
+
+/**
+ * A literal date built by a constructor, else null: new Date(<date-shaped
+ * literal>), Date.parse(<same>), new Date(<two or more numeric literals>),
+ * Date.UTC(<numeric literals>), new Date(<one of these>), or a method called
+ * on any of them. Returns the date-shaped literal, or the expression's source
+ * text for a numeric date. A single numeric argument is an epoch and is not
+ * matched; see the limitations above.
+ */
+function constructedDate(e: ts.Expression, dateShaped: RegExp): string | null {
+  const v = unwrap(e);
+  if (ts.isNewExpression(v) && isDate(v.expression)) {
+    const args = v.arguments ?? [];
+    if (args.length === 1) return dateShapedText(args[0], dateShaped) ?? constructedDate(args[0], dateShaped);
+    if (args.length >= 2 && args.every(isNumber)) return v.getText();
+    return null;
+  }
+  if (!ts.isCallExpression(v) || !ts.isPropertyAccessExpression(v.expression)) return null;
+  const { expression: receiver, name } = v.expression;
+  if (isDate(receiver)) {
+    if (name.text === "parse" && v.arguments.length >= 1) return dateShapedText(v.arguments[0], dateShaped);
+    if (name.text === "UTC" && v.arguments.length >= 1 && v.arguments.every(isNumber)) return v.getText();
+    return null;
+  }
+  // A method on a literal date, e.g. .toISOString(), is still that date.
+  return constructedDate(receiver, dateShaped);
+}
+
 function isAnchorCall(e: ts.Expression, helpers: readonly string[]): boolean {
   return ts.isCallExpression(e) && helpers.includes(calleeName(e) ?? "");
 }
@@ -298,10 +357,11 @@ export function sitesInSource(
       const site: DateSite = { file, symbol, key, ordinal, verdict: "compliant" };
       const v = value ? unwrap(value) : null;
       const literal = v ? literalText(v) : null;
-      if (literal !== null && config.dateShaped.test(literal)) {
+      const constructed = v && !json ? constructedDate(v, config.dateShaped) : null;
+      if ((literal !== null && config.dateShaped.test(literal)) || constructed !== null) {
         site.verdict = "violation";
-        site.literal = literal;
-        site.detail = `= ${JSON.stringify(literal)}`;
+        site.literal = literal ?? constructed ?? undefined;
+        site.detail = constructed !== null && value ? `= ${value.getText()}` : `= ${JSON.stringify(literal)}`;
         if (pinned) site.derivedStatus = config.clockPinnedStatus;
       } else if (literal !== null) {
         site.shape = "not_date_shaped";

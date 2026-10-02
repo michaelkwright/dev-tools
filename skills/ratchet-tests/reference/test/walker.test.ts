@@ -90,6 +90,59 @@ describe("the walker must NOT flag", () => {
   });
 });
 
+describe("a literal date inside a Date constructor", () => {
+  // One pair per form: the literal date the walker MUST flag, and the
+  // clock-relative or opaque value of the same form it must NOT.
+  const forms: Array<[form: string, mustFlag: string, mustNotFlag: string]> = [
+    ["new Date(<date string>)", `new Date("2000-01-02")`, `new Date("yesterday")`],
+    ["new Date(<template, date-shaped head>)", "new Date(`2000-01-${day}T00:00:00Z`)", "new Date(`${year}-01-02`)"],
+    ["Date.parse(<date string>)", `Date.parse("2000-01-02T00:00:00Z")`, `Date.parse(input)`],
+    ["Date.parse(<template, date-shaped head>)", "Date.parse(`2000-01-${day}`)", "Date.parse(`${stamp}`)"],
+    ["new Date(<numeric literals>)", `new Date(2000, 0, 2)`, `new Date(2000, month, 2)`],
+    ["new Date(<signed numeric literals>)", `new Date(2000, 0, -1)`, `new Date(2000, 0, -offset)`],
+    ["Date.UTC(<numeric literals>)", `Date.UTC(2000, 0, 2)`, `Date.UTC(year, 0, 2)`],
+    ["new Date(Date.UTC(<numeric literals>))", `new Date(Date.UTC(2000, 0, 2))`, `new Date(Date.UTC(year, 0, 2))`],
+    ["a method on a literal date", `new Date("2000-01-02").toISOString()`, `new Date().toISOString()`],
+    ["through as/parens", `(new Date("2000-01-02") as Date)`, `(new Date(Date.now()) as Date)`],
+  ];
+
+  it.each(forms)("%s: MUST flag the literal", (_form, mustFlag) => {
+    const v = flagged(`const order = { created_at: ${mustFlag} };`);
+    expect(v.map((s) => s.key)).toEqual(["created_at"]);
+    expect(v[0].detail).toBe(`= ${mustFlag}`);
+  });
+
+  it.each(forms)("%s: must NOT flag the clock-relative or opaque value", (_form, _mustFlag, mustNotFlag) => {
+    const s = sitesOf(`const order = { created_at: ${mustNotFlag} };`);
+    expect(s.map((x) => [x.verdict, x.shape])).toEqual([["compliant", "computed"]]);
+  });
+
+  it("must NOT flag new Date(), new Date(Date.now() - n), new Date(daysAgo(n)) or new Date(variable)", () => {
+    const s = sitesOf(
+      `const order = { created_at: new Date(), shipped_at: new Date(Date.now() - 3 * DAY_MS), delivered_on: new Date(daysAgo(3)), cancelled_at: new Date(when) };`,
+    );
+    expect(s.filter((x) => x.verdict === "violation")).toEqual([]);
+  });
+
+  it("must NOT flag new Date(<one numeric literal>): an epoch is ambiguous, a recorded limitation", () => {
+    expect(flagged(`const order = { created_at: new Date(0), shipped_at: new Date(86_400_000) };`)).toEqual([]);
+  });
+
+  it("must NOT flag a constructed literal date under a non-temporal key", () => {
+    expect(flagged(`const order = { label: new Date("2000-01-02"), sku: Date.UTC(2000, 0, 2) };`)).toEqual([]);
+  });
+
+  it("reports the date-shaped string as the literal, and a numeric date as its source text", () => {
+    const v = flagged(`const order = { created_at: new Date("2000-01-02"), shipped_at: new Date(2000, 0, 2) };`);
+    expect(v.map((s) => s.literal)).toEqual(["2000-01-02", "new Date(2000, 0, 2)"]);
+  });
+
+  it("derives CLOCK_PINNED for a constructed literal date in a file that pins the clock", () => {
+    const v = flagged(`vi.useFakeTimers();\nconst order = { created_at: new Date("2000-01-02") };`);
+    expect(v.map((s) => s.derivedStatus)).toEqual(["CLOCK_PINNED"]);
+  });
+});
+
 describe("clock-pinned derivation", () => {
   it("POSITIVE: a file that calls setSystemTime or useFakeTimers derives CLOCK_PINNED for its violations", () => {
     for (const call of ["vi.setSystemTime(new Date(0));", "vi.useFakeTimers();", "jest.useFakeTimers();", "beforeEach(() => { vi.useFakeTimers({ now: 0 }); });"]) {

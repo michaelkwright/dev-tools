@@ -152,6 +152,9 @@ Why: they stop depending on the ambient runner's timezone.
 **Anchor fixture dates to the clock with a literal offset (an order created "now minus 45 days"), never a literal date that a computed cutoff compares against.**
 Why: a literal date ages out of its window months later and fails on an unrelated commit; a literal offset, unlike one derived from the constant under test, keeps the test independent.
 
+**Write fixture dates as `daysAgo(n)` / `dateDaysAgo(n)` with a literal `n`; a test that injects a pinned clock into the code under test anchors both ends or neither; the ratchet in the dev-tools `ratchet-tests` skill (`skills/ratchet-tests`) fails the diff that adds a literal date.**
+Why: fixtures anchored to the real clock march forward while an injected cutoff stays put, which builds a new expiry date into the fix for the old one.
+
 **The local gate is the primary gate; scheduled CI is a backstop that catches a skipped local gate up to a day late, so check the latest scheduled run (`{{SCHEDULED_CI_CMD}}`) at session pre-flight.**
 Why: a red scheduled run means something already slipped past a local gate.
 

@@ -105,8 +105,13 @@ Leave everything uncommitted for the user to review unless they ask for a commit
 
 ## 6. Offer scrub registration
 
-Only if `~/.config/dev-tools/scrub/` exists, and only on approval: create `denylist.d/<project>.txt` there (project name, repo slug, Supabase ref, and any IDs gathered, one per line) and add a `sources.txt` line (`<absolute repo path> <subpaths>`, the source directories whose file names identify the project). Never write either inside any repo.
-Why: later distillation from this project into dev-tools is then blocked from leaking its names.
+Only if `~/.config/dev-tools/scrub/` exists, and only on approval: create `denylist.d/<project>.txt` there (project name, repo slug, Supabase ref, and any IDs gathered, one per line), create `vocab.d/<project>.txt` (below), and add a `sources.txt` line (`<absolute repo path> <subpaths>`, the source directories whose file names identify the project). Never write any of them inside any repo.
+Why: later distillation from this project into dev-tools is then blocked from leaking its names, and warned on its vocabulary.
+
+**Derive `vocab.d/<project>.txt` from the target as read in step 2: its distinctive domain nouns, table and function names, and product names, one whole word per line. Favor precision over recall, and leave out plain dictionary words.**
+Why: the gate warns on every whole-word match, so a common word floods each scan with hits that bury the one that identifies the project.
+
+Create it in the same registration: the gate stops with exit 2 when `vocab.d/` holds no entries, and a project registered without its own file is checked for its names but never for its vocabulary.
 
 ## 7. Report
 

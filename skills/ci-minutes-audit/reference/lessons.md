@@ -1,6 +1,6 @@
 # Lessons
 
-One per bullet, each with why it matters. Worked numbers are in `case-study-2026-09.md`.
+One per bullet, each with why it matters. Worked numbers are in [`case-study-private-app-2026-09.md`](case-study-private-app-2026-09.md).
 
 - **Measure before changing.** Pre-measurement guesses (docs-only pushes, `cancel-in-progress`, dependency caching) were all wrong: docs-only runs were 0.3% of minutes, and the other two were already configured. The real drivers were a second timezone leg on every push (42%) and per-job rounding (11.4%). Run the analyzer first; a lever chosen from intuition can be a no-op.
 - **A tiny decision or setup job bills a full minute on every run.** A 7-second "which path are we on" job costs as much as a 60-second one. Move the decision to workflow-level path filters instead of a job.

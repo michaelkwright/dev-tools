@@ -65,7 +65,7 @@ export const CONFIG = {
 
   // Declared exceptions. Each entry names its file and carries a reason, must
   // still match something real, and is never added to make a new mistake pass.
-  // file is repo-relative, e.g. "changelog/v1.0-to-v1.49.md".
+  // file is repo-relative, e.g. "changelog/v0.1-to-v0.50.md".
   nonConformingHeadings: [] as HeadingException[], // heading: text after the marker
   partitionExceptions: [] as PartitionException[], // version: e.g. "v1.4"
 };

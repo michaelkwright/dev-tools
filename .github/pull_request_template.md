@@ -1,0 +1,1 @@
+Pull requests are not being accepted right now, so this one will be closed without review. Please open an issue instead, describing the problem and the fix you have in mind; see [CONTRIBUTING.md](../CONTRIBUTING.md). Security problems go through private reporting in the Security tab, as [SECURITY.md](../SECURITY.md) explains.

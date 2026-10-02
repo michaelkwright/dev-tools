@@ -1,6 +1,13 @@
 # dev-tools
 
-Portable Claude Code skills and dev tooling, offered as-is. No support is promised; issues and pull requests may go unanswered.
+Portable Claude Code skills and dev tooling, offered as-is. No support is promised. Issues are welcome; pull requests are not being accepted for now (see [CONTRIBUTING](CONTRIBUTING.md)). Report security problems privately (see [SECURITY](SECURITY.md)).
+
+## Before you use this
+
+- **A skill is a set of instructions an AI agent will follow with your permissions.** Read a skill's `SKILL.md` and the files it points to before you install it, as you would read a script before running it.
+- **Pin to a commit rather than tracking `main`.** `install.sh` links the skills to this checkout, so whatever is checked out is what your agent follows. Check out a commit you have read, and review the diff before you move to a newer one.
+- **`posture-audit.sql` is read-only; the templates are not.** The audit is a single `SELECT`. The `supabase-hardening` templates run `REVOKE` and `GRANT` statements against your database: they are starting points to read and adapt to your schema, not to paste and run.
+- **There is no warranty.** Everything here is provided as-is under the [MIT license](LICENSE).
 
 ## Skills
 
@@ -20,7 +27,9 @@ cd dev-tools
 ./install.sh
 ```
 
-`install.sh` links each folder under `skills/` into `~/.claude/skills/` as an absolute symlink, so a `git pull` here updates the skills everywhere. It is safe to re-run. A symlink that points elsewhere is repointed (and the old target is printed). A real file or directory already at that name is never touched: the script refuses it and exits non-zero. Set `CLAUDE_SKILLS_DIR` to install somewhere other than `~/.claude/skills`. A folder without a `SKILL.md` is skipped with a notice.
+To pin, run `git checkout <commit>` here before installing (see [Before you use this](#before-you-use-this)).
+
+`install.sh` links each folder under `skills/` into `~/.claude/skills/` as an absolute symlink, so whatever this checkout holds is live everywhere: a `git pull` or `git checkout` here changes every installed skill at once. It is safe to re-run. A symlink that points elsewhere is repointed (and the old target is printed). A real file or directory already at that name is never touched: the script refuses it and exits non-zero. Set `CLAUDE_SKILLS_DIR` to install somewhere other than `~/.claude/skills`. A folder without a `SKILL.md` is skipped with a notice.
 
 ## Starting a project
 

@@ -109,7 +109,7 @@ Only if `~/.config/dev-tools/scrub/` exists, and only on approval: create `denyl
 Why: later distillation from this project into dev-tools is then blocked from leaking its names, and warned on its vocabulary.
 
 **Derive `vocab.d/<project>.txt` from the target as read in step 2: its distinctive domain nouns, table and function names, and product names, one whole word per line. Favor precision over recall, and leave out plain dictionary words.**
-Why: the gate warns on every whole-word match, so a common word floods each scan with hits that bury the one that identifies the project.
+Why: the gate warns on every bounded match, inside snake_case and camelCase identifiers too (the rule is in the header of dev-tools' `scripts/scrub.sh`), so a common word floods each scan with hits that bury the one that identifies the project.
 
 Create it in the same registration: the gate stops with exit 2 when `vocab.d/` holds no entries, and a project registered without its own file is checked for its names but never for its vocabulary.
 

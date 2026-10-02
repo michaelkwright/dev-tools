@@ -12,14 +12,31 @@
 # Untracked and gitignored files are never read.
 #
 # Config directory: $SCRUB_CONFIG_DIR, default ~/.config/dev-tools/scrub
-#   denylist.d/*.txt    one term per line (case-insensitive, whole-word match)
+#   denylist.d/*.txt    one term per line (case-insensitive, whole-word match
+#                       as grep -w: letters, digits and "_" are word characters)
 #   sources.txt         one source repo per line: <repo path> <subpath>...
 #                       File-name stems (8+ chars) ever tracked under those
 #                       subpaths, across that repo's full history, are added to
 #                       the denylist. Stems of 4-7 chars are review-only.
 #   allow.txt           optional; generic words removed from generated stems
-#   vocab.d/*.txt       review-only vocabulary (case-insensitive, whole-word)
+#   vocab.d/*.txt       review-only vocabulary (case-insensitive, bounded match;
+#                       see "Vocabulary boundaries" below)
 #   identity-allow.txt  optional; emails that are not flagged as identities
+#
+# Vocabulary boundaries (the one statement of this rule; docs point here).
+# A vocab entry matches case-insensitively, as a literal, wherever both of its
+# ends fall on a boundary. A boundary is:
+#   - the start or end of the line;
+#   - any character that is not an ASCII letter or digit, so "_", "-", ".",
+#     "/" and whitespace all count (order_TERM_id matches);
+#   - a camelCase hump: a lowercase letter or digit followed by an uppercase
+#     letter (xTermY, termY, xTerm); and, in a run of capitals, the point
+#     before the last capital that is followed by a lowercase letter, so
+#     "HTTPServer" splits before "Server" (TERMValue matches).
+# A longer run of one case has no boundary inside it: xtermy and XTERMY do not
+# match. Nothing inside the entry is checked, and an entry holding "_", "-" or
+# a space matches only that exact spelling. Inflected forms (plurals) are not
+# matched: list each form that matters. Stems are the denylist's job.
 #
 # Checks. Blocking: gitleaks, the denylist, absolute home paths. Review-only
 # (WARN, never failing): short stems, vocabulary, UUIDs and long hex IDs,
@@ -288,23 +305,62 @@ grep_into() {
   [ "$rc" -le 1 ] || { cat "$TMP/err_g" >&2; die "grep failed (exit $rc)"; }
 }
 
+# bounded_into <out> [-r] <terms> <target>: the vocabulary matcher (see
+# "Vocabulary boundaries" above), with grep_into's output. grep -i -F finds
+# every line holding a term anywhere; awk then keeps each occurrence whose
+# two ends are boundaries. Bytes, not locale characters, so LC_ALL=C.
+bounded_into() {
+  local out="$1" rec="" rc=0
+  shift
+  if [ "$1" = -r ]; then rec=-r; shift; fi
+  # shellcheck disable=SC2086
+  grep -n -I -i -F $rec -f "$1" "$2" > "$TMP/g_cand" 2>"$TMP/err_g" || rc=$?
+  [ "$rc" -le 1 ] || { cat "$TMP/err_g" >&2; die "grep failed (exit $rc)"; }
+  LC_ALL=C awk -v tf="$1" -v rec="${rec:+1}" '
+    function al(c) { return c ~ /[A-Za-z0-9]/ }
+    # edge(s, i): 1 if a boundary falls between characters i and i+1 of s
+    function edge(s, i,   a, b, c) {
+      if (i < 1 || i >= length(s)) return 1
+      a = substr(s, i, 1); b = substr(s, i + 1, 1); c = substr(s, i + 2, 1)
+      return !al(a) || !al(b) || (a ~ /[a-z0-9]/ && b ~ /[A-Z]/) \
+        || (a ~ /[A-Z]/ && b ~ /[A-Z]/ && c ~ /[a-z]/)
+    }
+    BEGIN { while ((getline t < tf) > 0) if (t != "") T[++n] = t
+      if (n == 0) exit 2 }
+    { s = $0; f = ""
+      if (rec) { i = index(s, ":"); f = substr(s, 1, i); s = substr(s, i + 1) }
+      i = index(s, ":"); ln = substr(s, 1, i); s = substr(s, i + 1)
+      lo = tolower(s)
+      for (k = 1; k <= n; k++) {
+        t = T[k]; w = length(t); o = 0
+        while ((p = index(substr(lo, o + 1), t)) > 0) {
+          o += p
+          if (edge(s, o - 1) && edge(s, o + w - 1)) print f ln substr(s, o, w)
+        }
+      } }' "$TMP/g_cand" > "$out" || die "vocabulary matcher failed"
+}
+
 # scan <tag> <check> <mode> <pattern> [<drop-regex>]
 #   mode terms: <pattern> is a file of fixed strings, case-insensitive whole
-#   words. mode regex: <pattern> is a case-sensitive extended regex. Matches
-#   equal to <drop-regex> are discarded.
+#   words. mode bounded: the same, but matched by bounded_into. mode regex:
+#   <pattern> is a case-sensitive extended regex. Matches equal to
+#   <drop-regex> are discarded.
 scan() {
-  local tag="$1" check="$2" mode="$3" pat="$4" drop="${5:-}" lower=0
+  local tag="$1" check="$2" mode="$3" pat="$4" drop="${5:-}" lower=0 m=grep_into
   if [ "$mode" = terms ]; then
     [ -s "$pat" ] || return 0
     set -- -i -w -F -f "$pat"; lower=1
+  elif [ "$mode" = bounded ]; then
+    [ -s "$pat" ] || return 0
+    set -- "$pat"; lower=1; m=bounded_into
   else
     set -- -E -e "$pat"
   fi
-  grep_into "$TMP/g_idx" -r "$@" "$TMP/idx"
-  grep_into "$TMP/g_hist" -r "$@" "$TMP/hist"
-  grep_into "$TMP/g_msg" "$@" "$TMP/meta/msgs.txt"
-  grep_into "$TMP/g_id" "$@" "$TMP/meta/ids.txt"
-  grep_into "$TMP/g_path" "$@" "$TMP/meta/paths.txt"
+  $m "$TMP/g_idx" -r "$@" "$TMP/idx"
+  $m "$TMP/g_hist" -r "$@" "$TMP/hist"
+  $m "$TMP/g_msg" "$@" "$TMP/meta/msgs.txt"
+  $m "$TMP/g_id" "$@" "$TMP/meta/ids.txt"
+  $m "$TMP/g_path" "$@" "$TMP/meta/paths.txt"
 
   # normalize every surface to "surface<TAB>location<TAB>match"
   {
@@ -392,7 +448,7 @@ echo "== (4) review only: short file-name stems"
 scan WARN stems terms "$TMP/review"
 
 echo "== (5) review only: vocabulary"
-scan WARN vocab terms "$TMP/vocab_kept"
+scan WARN vocab bounded "$TMP/vocab_kept"
 
 echo "== (6) review only: UUIDs and long hex IDs"
 scan WARN hex-id regex "$HEX_ID_RE" "$HEX_ID_ALLOW_RE"

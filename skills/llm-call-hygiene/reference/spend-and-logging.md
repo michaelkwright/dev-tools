@@ -40,6 +40,7 @@ Why: an estimate is a hope, and a cap checked after the fact has already been ex
 - A worst case for a request carrying a server-side search tool includes the injected search-result input tokens: results are fed back as input, so the billed input can be ten times the request as sent. Budget per allowed search (the tool's maximum uses), not per expected search, until a measured figure replaces it.
 - Price every model the run touches from a recorded list-price table with its read date; a model with no recorded price stops the run rather than being priced at zero.
 - Report actual tokens and dollars afterwards, beside the estimate.
+- `runner/draw-runner.ts` implements this gate, the dry run and the record for a repeated-draw run.
 
 **A paid harness records everything the run returned that a later question could need.**
 Why: the paid call is the expensive part and a wider record is free, while a field nobody recorded can only be recovered by paying again.

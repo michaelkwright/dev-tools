@@ -5,7 +5,7 @@ description: Use when writing or changing code that calls a model API or reads i
 
 # LLM call hygiene
 
-A model call fails in ways the test suite never sees: an answer at the wrong index, a cut-off reply parsed as a bad one, a request body the API rejects behind a stubbed fetch, a paid run with no cap. Each rule below names the trap and the fix, and points to the reference file that holds the detail. Ships copyable response helpers for the Anthropic Messages API and a fixed-index-read guard built on the dev-tools `ratchet-tests` core, both proven by a harness that makes no API call.
+A model call fails in ways the test suite never sees: an answer at the wrong index, a cut-off reply parsed as a bad one, a request body the API rejects behind a stubbed fetch, a paid run with no cap. Each rule below names the trap and the fix, and points to the reference file that holds the detail. Ships copyable response helpers for the Anthropic Messages API, a fixed-index-read guard built on the dev-tools `ratchet-tests` core, and a capped repeated-draw runner, all proven by a harness that makes no API call.
 
 ## Already elsewhere
 
@@ -45,13 +45,13 @@ Why: a ceiling sized for a model that never thinks truncates the day thinking us
 Why: one model rejects a parameter another requires, and a change for one model that leaks into another is silent there. → `reference/requests-and-models.md`
 
 **A model swap is a code change first, with test mocks migrated to every envelope shape in the same change, verified by repeated draws against the real model.**
-Why: old mocks keep the suite green through the break, and one smoke call can come back clean while one request in several fails. → `reference/requests-and-models.md`
+Why: old mocks keep the suite green through the break, and one smoke call can come back clean while one request in several fails. → `reference/requests-and-models.md`, `runner/draw-runner.ts`
 
 **A change to the request body needs one live call.**
 Why: an unsupported parameter, a prefilled assistant turn or a wrong model id fails every request while tests that stub the HTTP call stay green. → `reference/requests-and-models.md`
 
 **A prompt defect is a distribution: settle it by N draws, never by one draw or by reading.**
-Why: model error and validator discard are rates, and one draw answers a different question. → `reference/requests-and-models.md`
+Why: model error and validator discard are rates, and one draw answers a different question. → `reference/requests-and-models.md`, `runner/draw-runner.ts`
 
 ### Logging and spend
 
@@ -65,10 +65,10 @@ Why: a shared version moves for every kind at once and can no longer say which t
 Why: a limit after the call has already spent, and a cache hit must not consume budget. → `reference/spend-and-logging.md`
 
 **Before any paid run: a dry-run worst case and hard caps on requests and dollars, checked before each call from the usage fields; a search request's worst case includes the injected result tokens.**
-Why: only a gate that adds the next call's worst case before sending it holds, and search results are billed as input. → `reference/spend-and-logging.md`
+Why: only a gate that adds the next call's worst case before sending it holds, and search results are billed as input. → `reference/spend-and-logging.md`, `runner/draw-runner.ts`
 
 **A paid harness records everything the run returned that a later question could need.**
-Why: a field nobody recorded can only be recovered by paying again. → `reference/spend-and-logging.md`
+Why: a field nobody recorded can only be recovered by paying again. → `reference/spend-and-logging.md`, `runner/draw-runner.ts`
 
 ### Prompt inputs
 
@@ -114,12 +114,32 @@ Prerequisites: the dev-tools `ratchet-tests` skill's `reference/ratchet-core.ts`
 4. Run `npx vitest run src/test/ratchets/fixed-index-read/` in the foreground and read its exit code. Fix each (a) by reading through `trailingText` or `parseJsonReply`; exempt only a read that is not of a response, with its reason. If (i) fails on `computed_index` because the project has such a read, change it to `"required"`. Then raise `MIN_SITES` toward the real site count.
 5. Prove it: copy a file the walker reads, append `export const probeRead = (res: { content: Array<{ text?: string }> }) => res.content[0].text;`, and re-run step 4's command. It must exit 1 with a rule (a) failure naming `probeRead :: content :: 0`. Restore the file from the copy, confirm with `diff` that nothing differs, and re-run green.
 
+## Draw runner
+
+`runner/draw-runner.ts` is a copyable TypeScript script that sends one request shape N times to a real model and counts what comes back. Use it for any question whose answer is a distribution: verifying a model swap, settling a prompt defect, or measuring how often a reply arrives as `[thinking, text]`. Anthropic Messages API only. It classifies each reply with the response helpers above and has no reader of its own.
+
+- `--dry` makes no network call and reads no key. It builds every request, checks each, and prints the worst case: draws x (estimated input tokens + `max_tokens`) at the configured prices, plus, for a request carrying a web search tool, `max_uses` x (the search fee + an injected-input allowance, default 10,000 tokens per permitted search) and a tool-prompt allowance. The input figure is an estimate (the serialized body's length over 2.5 characters per token, chosen to over-count), and the output says so.
+- `--live` checks before every call that the request cap is not reached and that dollars spent so far, read from the usage fields, plus the next call's worst case stay under the dollar cap, and names the cap that stopped it. A call with an unknown outcome is charged its worst case. There are no retries and no continuation: a failed or paused draw is a recorded data point, and a rejected request (400, 401, 403, 404, 413) stops the run.
+- Each draw appends one JSONL record: the raw content blocks (thinking included), usage, stop reason, latency, requested and returned model, a SHA-256 of the request body, the helpers' classification and its cost. The closing summary counts draws by stop reason, by block-shape sequence and by parse outcome, and reports tokens and dollars against each cap. It is written beside the JSONL file as well as printed.
+- The API key comes from the environment variable named in config. Live mode refuses to start without it, and the key never appears in a log line, record or summary.
+- There are no default prices. The input, output and per-search prices, the date they were read and their source are all required, and a missing one refuses to run. A request carrying `cache_control` also needs the cache prices.
+- Optional parity: given the shipping builder's body, the run refuses unless the probe body equals it in every field except the model id. When the builder applies per-model parameters, pass the shipping builder's output for the probe's own model, so parity proves the probe did not re-model by spreading over a built body.
+
+### Copy and configure
+
+1. Copy `runner/draw-runner.ts` to the project (for example `scripts/probes/`), fill `{{DEV_TOOLS_SHA}}`, and point its helpers import at the project's copy of `message-reading.ts`.
+2. Fill `CONFIG`: the model id; the draw count, request cap and dollar cap; the prices from the provider's pricing page with the date read and the source; the key's environment variable; an output path that does not exist yet; `buildRequest`, through the shipping builder with the model passed through the builder's own parameter; optionally `shippingBody`; and `parse` (`"json"`, `"json-fence"`, or `"text"` for a search reply or prose).
+3. Run `node scripts/probes/<file>.ts --dry` (Node 22.18 or later) and read the worst case before approving the spend.
+
+It is proven against a mocked transport only, never against the real API. So a project's first real run is a dry run, then one draw under a small cap (`draws: 1`, `maxRequests: 1`, a dollar cap just above that draw's worst case), with its record read before any larger run. Before any new draw, replay what earlier records already answer: they hold the raw blocks, so a different reader can run over them at no cost.
+
 ## Harness
 
-Both harnesses run under `npm test` in a dev-tools checkout (`npm install` first). Neither makes a request to any model API; every envelope is written by hand.
+All three harnesses run under `npm test` in a dev-tools checkout (`npm install` first). None makes a request to any model API; every envelope is written by hand.
 
 - `helpers/test/`: the reader on `[text]`, `[thinking, text]`, `[redacted_thinking, text]`, `[thinking]` alone at `max_tokens`, several trailing text blocks, text-thinking-text and an interleaved search reply; every documented stop reason, null and an unknown one; a truncated reply whose text would parse; the fence opt-in on and off, and every wrapper it must still refuse; and a sentinel planted in the model text, asserted absent from every serialized failure. Break probes, each changing the result and then restored from a copy and confirmed by `diff`: reading `content[0].text`, moving the stop check after the parse, copying model text into a failure, and removing the tool-block check.
 - `guard/test/`: every flagged form and what must not be flagged; comments, strings, templates and regexes, with positive controls that real code beside a comment is still flagged; reader calls; keys and ordinals; a walk over a throwaway tree (exclusions, an empty root, a missing root, an unparseable file); the verdict through the core (a violation, a comment-only mention, an exempt site, both kinds of stale exemption, a missing reason, zero files); and the shipped helper run through the guard. Break probes: reading comment text as code, narrowing the pattern to plain `content[0]`, and letting a stale exemption pass in the core.
+- `runner/test/`: an injected transport scripted per test. Dry mode never calls it; missing or zero prices, a missing read date and the shipped `CONFIG` refuse; the dollar cap stops before a call whose worst case would cross it, with fixture usage that would cross it after the call; spend comes from usage, and an unknown outcome is charged its worst case; the request cap stops; the search allowance is in the worst case, and a search tool without `max_uses` refuses; parity refuses a second differing field and accepts a model-only difference; the record keeps raw thinking and text blocks; failed and paused draws are recorded without a retry, and a rejected request stops the run; a sentinel planted as the key appears in no log, record or summary; the summary counts block shapes, stop reasons and parse outcomes. Break probes: moving the cap check after the call, letting dry mode call the transport, dropping the raw blocks from the record, and making parity compare nothing.
 
 ## Reference files
 
@@ -127,6 +147,6 @@ Open these from this folder when needed:
 
 - `reference/reading-responses.md`: the trailing run, stop reasons, naming failures, strict parsing and measured rescues, tool and search replies. Open before writing any code that reads a model's reply.
 - `reference/requests-and-models.md`: thinking budgets, per-model request parameters, model swaps, live calls for body changes, prompt defects as distributions. Open before changing a request body, a ceiling or a model.
-- `reference/spend-and-logging.md`: the per-call log row, prompt versions, the rate limit's place, caps and dry runs, what a paid harness records. Open before logging model calls or running anything that spends.
+- `reference/spend-and-logging.md`: the per-call log row, prompt versions, the rate limit's place, caps and dry runs, what a paid harness records. Open before logging model calls or running anything that spends; `runner/draw-runner.ts` implements its caps, dry run and record.
 - `reference/prompt-inputs.md`: server-built prompts, untrusted text, output conventions, local dates, asserting the rendered prompt, cached prefixes, schemas, self-grading. Open before building a prompt from user or stored input.
 - `reference/api-facts.md`: dated facts about stop reasons, block types, thinking parameters per model and server tools, each with its source. Re-read the docs before relying on any of them.

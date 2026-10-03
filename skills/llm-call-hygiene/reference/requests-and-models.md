@@ -31,6 +31,7 @@ Why: a reply shape that depends on whether the model chose to think is a rate, n
 
 - Size the draw set to see the rate you care about, and grade against the stored output of the old model for the same input.
 - State the pass bar before the run: for example, zero thinking blocks on every tool-free draw, every draw valid, only `end_turn`.
+- `runner/draw-runner.ts` runs the draws under caps and counts them by stop reason, block shape and parse outcome.
 - The spend rules for that run are in `reference/spend-and-logging.md`.
 
 **A change to the request body needs one live call, because tests that stub the HTTP call cannot see it.**
@@ -43,5 +44,5 @@ Why: an unsupported parameter, a prefilled assistant turn or a wrong model id fa
 **A prompt defect is a distribution: settle it by N draws, never by one draw or by reading.**
 Why: whether the model answered badly or the validator discarded a good answer is a rate over draws, and one draw or a careful read of the prompt answers a different question.
 
-- Run the shipping prompt, through the shipping builder, N times against the same input, and count each outcome.
+- Run the shipping prompt, through the shipping builder, N times against the same input, and count each outcome (`runner/draw-runner.ts`).
 - Grade a prompt change against enough items to see variance; two graded items can both come out on the same side of a coin flip.

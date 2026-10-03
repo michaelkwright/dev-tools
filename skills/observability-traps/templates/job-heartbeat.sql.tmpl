@@ -1,0 +1,204 @@
+-- Seeded from dev-tools @ {{DEV_TOOLS_SHA}}; this file is now the project's own.
+--
+-- JOB HEARTBEAT: a server-only table every scheduled job writes one row to per
+-- run, and a read-only watchdog query that reports what the jobs did not say.
+--
+-- Two parts, applied differently:
+--   PART 1, the migration: revoke first, server-only grant, RLS, then verify in
+--     the same transaction. Apply as ONE paste in the dashboard SQL editor; a
+--     failed check in its DO block raises and rolls the whole paste back.
+--   PART 2, the watchdog query: one read-only SELECT, run on a schedule by the
+--     watchdog (wrapped in a service_role-only function if it is called over
+--     the Data API, since the cron schema is not exposed there), or by hand.
+--
+-- How a job writes its heartbeat (with the service-role client, server side):
+--   on entry:  insert (job_name, outcome) values ('<name>', 'started') returning id
+--   on exit:   update set finished_at = now(), outcome = 'ok' | 'failed',
+--              detail = <the counts the job already computed> where id = <that id>
+--   A rehearsal (dry) run sets detail.dry_run = true, so it never reads as fresh.
+--   The heartbeat write never fails the job: read its error, log it, carry on.
+--   job_name is the scheduler's job name, verbatim: it is the join key.
+--
+-- Worked example: two order jobs, 'nightly-order-archive' and
+-- 'hourly-item-restock'. Rename the table and the job names; keep the steps.
+--
+-- Why each step: observability-traps skill, reference/scheduled-jobs.md; the ACL
+-- steps follow the supabase-hardening skill's new-table template.
+
+-- ═════════════════════════════════════════════════════════════════════════════
+-- PART 1: the migration
+-- ═════════════════════════════════════════════════════════════════════════════
+
+begin;
+
+-- 1. The table. Inserted on ENTRY, so a run that started and died leaves a
+--    'started' row, and a run that never started leaves nothing.
+create table public.job_heartbeats (
+  id          uuid primary key default gen_random_uuid(),
+  job_name    text not null check (char_length(job_name) between 1 and 200),
+  started_at  timestamptz not null default now(),
+  finished_at timestamptz,
+  outcome     text not null default 'started'
+                check (outcome in ('started', 'ok', 'failed')),
+  detail      jsonb,  -- counts and timestamps only: no user content, no model text
+  check (finished_at is null or finished_at >= started_at),
+  check ((outcome = 'started') = (finished_at is null))
+);
+create index job_heartbeats_job_started on public.job_heartbeats (job_name, started_at desc);
+
+-- 2. Revoke FIRST. Default privileges have already granted ALL to anon and
+--    authenticated; a grant without this revoke changes nothing.
+revoke all on table public.job_heartbeats from public, anon, authenticated;
+
+-- 3. THEN the server-only grant. The jobs write it with the service-role client;
+--    DELETE is for a retention job.
+grant select, insert, update, delete on table public.job_heartbeats to service_role;
+
+-- 4. RLS on with no policy. The missing grant is what refuses a client; the
+--    absent policy is the second wall, not the first.
+alter table public.job_heartbeats enable row level security;
+
+-- 5. Verify, in the same transaction. Raw ACL first, privilege helpers second.
+--    A NULL relacl means the built-in defaults apply, and aclexplode(NULL)
+--    returns no rows, which would read as a pass; COALESCE with acldefault
+--    expands it instead.
+do $$
+declare
+  v_tbl constant regclass := 'public.job_heartbeats'::regclass;
+  v_acl aclitem[];
+begin
+  select coalesce(c.relacl, acldefault('r', c.relowner)) into v_acl
+  from pg_class c where c.oid = v_tbl;
+
+  -- (a) PUBLIC, anon and authenticated hold nothing, at the table or column level.
+  if exists (
+    select 1 from aclexplode(v_acl) a
+    where a.grantee in (0, 'anon'::regrole::oid, 'authenticated'::regrole::oid)
+  ) then
+    raise exception 'VERIFY: a client role or PUBLIC holds a table privilege on % (%)', v_tbl, v_acl;
+  end if;
+  if exists (
+    select 1 from pg_attribute att, aclexplode(att.attacl) a
+    where att.attrelid = v_tbl and att.attnum > 0 and not att.attisdropped
+      and a.grantee in (0, 'anon'::regrole::oid, 'authenticated'::regrole::oid)
+  ) then
+    raise exception 'VERIFY: a client role or PUBLIC holds a column privilege on %', v_tbl;
+  end if;
+  if has_table_privilege('anon', v_tbl, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER')
+     or has_table_privilege('authenticated', v_tbl, 'SELECT, INSERT, UPDATE, DELETE, TRUNCATE, REFERENCES, TRIGGER') then
+    raise exception 'VERIFY: a client role effectively holds a privilege on %', v_tbl;
+  end if;
+
+  -- (b) service_role can write and read the heartbeat.
+  if not has_table_privilege('service_role', v_tbl, 'SELECT')
+     or not has_table_privilege('service_role', v_tbl, 'INSERT')
+     or not has_table_privilege('service_role', v_tbl, 'UPDATE') then
+    raise exception 'VERIFY: service_role cannot select, insert and update %', v_tbl;
+  end if;
+
+  -- (c) RLS is on.
+  if not (select c.relrowsecurity from pg_class c where c.oid = v_tbl) then
+    raise exception 'VERIFY: RLS is not enabled on %', v_tbl;
+  end if;
+end $$;
+
+commit;
+
+-- ═════════════════════════════════════════════════════════════════════════════
+-- PART 2: the watchdog query
+-- ═════════════════════════════════════════════════════════════════════════════
+--
+-- One row per finding; no rows means nothing to report.
+--   MISSING  an active scheduled job with no ok, non-dry-run heartbeat inside
+--            its freshness window. Covers a job that stopped, one that never
+--            wrote a heartbeat, and one whose recent runs all failed.
+--   FAILED   the scheduler's own ledger (cron.job_run_details) recorded failed
+--            runs inside the lookback, aggregated to one row per job. Catches a
+--            job that died before its heartbeat or whose failure rolled the
+--            heartbeat back, and one that fails intermittently but stays fresh.
+--
+-- The two windows answer different questions. Freshness is bounded by false
+-- alarms: for a daily job checked at an arbitrary hour, a healthy newest run is
+-- up to 24h old, so a window of 24h or less alarms on healthy nights. The
+-- lookback is bounded by how long a failure must survive to be read at all, so
+-- it outlasts a missed watchdog run or two.
+--
+-- For a job the scheduler dispatches over HTTP (pg_net), its ledger row records
+-- only that the request was queued, never what the function did: FAILED cannot
+-- see that job's failures, and its heartbeat, written from inside the function,
+-- is the only proof of work.
+--
+-- Never select cron.job.command or job_run_details.command: command text can
+-- carry a secret, and this output is sent on to whoever gets paged.
+--
+-- The watchdog cannot witness its own absence. Give it an external check-in
+-- (an uptime or cron monitor that alarms when the check-in does not arrive).
+
+with params as (
+  select interval '36 hours' as fresh_window,       -- default freshness window
+         interval '72 hours' as failure_lookback    -- how far back FAILED reads
+),
+-- Per-job freshness windows, for a job that runs less or more often than daily.
+-- Add rows as ('<job name>', interval '<window>').
+window_overrides (job_name, fresh_window) as (
+  select null::text, null::interval where false
+  -- union all values ('weekly-order-report', interval '8 days')
+),
+active_jobs as (
+  select j.jobname as job_name,
+         coalesce(o.fresh_window, p.fresh_window) as fresh_window
+  from cron.job j
+  cross join params p
+  left join window_overrides o on o.job_name = j.jobname
+  where j.active
+),
+missing as (
+  select 'MISSING'::text as finding,
+         a.job_name,
+         jsonb_build_object(
+           'fresh_window', a.fresh_window::text,
+           'newest_ok_started_at', (
+             select max(h.started_at) from public.job_heartbeats h
+             where h.job_name = a.job_name
+               and h.outcome = 'ok'
+               and (h.detail -> 'dry_run') is distinct from 'true'::jsonb
+           )
+         ) as detail
+  from active_jobs a
+  where not exists (
+    select 1 from public.job_heartbeats h
+    where h.job_name = a.job_name
+      and h.outcome = 'ok'
+      and (h.detail -> 'dry_run') is distinct from 'true'::jsonb
+      and h.started_at >= now() - a.fresh_window
+  )
+),
+failed_runs as (
+  select d.jobid,
+         d.start_time,
+         d.return_message,
+         -- A job unscheduled since it failed still surfaces, under its jobid.
+         coalesce(j.jobname, 'jobid:' || d.jobid::text) as job_name
+  from cron.job_run_details d
+  left join cron.job j on j.jobid = d.jobid
+  cross join params p
+  where d.status = 'failed'
+    and d.start_time >= now() - p.failure_lookback
+),
+failed as (
+  select 'FAILED'::text as finding,
+         f.job_name,
+         jsonb_build_object(
+           'failed_runs', count(*),
+           'failure_lookback', (select p.failure_lookback::text from params p),
+           'latest_start_time', max(f.start_time),
+           -- The newest failure's message describes the current state.
+           'latest_return_message', left((array_agg(f.return_message order by f.start_time desc))[1], 300)
+         ) as detail
+  from failed_runs f
+  group by f.jobid, f.job_name
+)
+select finding, job_name, detail from missing
+union all
+select finding, job_name, detail from failed
+order by finding, job_name;

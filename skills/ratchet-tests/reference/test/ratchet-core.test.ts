@@ -169,6 +169,27 @@ describe("ratchet-core fails each rule on its own", () => {
     expect(r.messages[0]).toContain("enumerated 0 site(s)");
   });
 
+  it("(g) zero files walked fails on its own message, beside the zero-site one", () => {
+    const i = base();
+    i.sites = [];
+    i.snapshot = { entries: [] };
+    i.shapes = {};
+    i.shapeCounts = {};
+    i.filesWalked = 0;
+    const r = rulesOf(i);
+    expect(r.rules).toEqual(["g", "g"]);
+    expect(r.messages[0]).toContain("walked 0 files");
+    expect(r.messages[1]).toContain("enumerated 0 site(s)");
+  });
+
+  it("(g) a walk that read files adds nothing, and an absent count is not checked", () => {
+    const i = base();
+    i.filesWalked = 3;
+    expect(checkRatchet(i)).toEqual([]);
+    delete i.filesWalked;
+    expect(checkRatchet(i)).toEqual([]);
+  });
+
   it("(g) fewer sites than a raised floor fails", () => {
     const i = base();
     i.minSites = 50;

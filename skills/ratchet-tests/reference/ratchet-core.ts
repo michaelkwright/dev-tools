@@ -17,7 +17,8 @@
 //   (d) an exempt entry with no justification, or an undeclared status
 //   (e) an entry carrying a retired status
 //   (f) an entry claiming a derived status
-//   (g) zero enumerated sites (or fewer than minSites)
+//   (g) zero enumerated sites (or fewer than minSites), or zero files walked
+//       when the caller reports filesWalked
 //   (h) any file the walker could not parse
 //   (i) a required compliance shape with no sites, or an absent one with any
 //   (j) a key field whose name or value looks like a line number
@@ -114,6 +115,11 @@ export interface RatchetInput {
   regenCommand?: string;
   /** Fewer enumerated sites than this fails rule (g). Default 1. */
   minSites?: number;
+  /**
+   * Files the walker read. When given, zero fails rule (g) on its own message,
+   * which points at the roots and globs rather than the pattern.
+   */
+  filesWalked?: number;
 }
 
 export interface RatchetFailure {
@@ -207,6 +213,13 @@ export function checkRatchet(input: RatchetInput): RatchetFailure[] {
   }
 
   // (g) non-vacuity floor.
+  if (input.filesWalked === 0) {
+    fail(
+      "g",
+      `walked 0 files. The roots or include globs match nothing, so no site could be seen; ` +
+        `an empty walk must not read as a clean repo.`,
+    );
+  }
   const floor = input.minSites ?? 1;
   if (input.sites.length < floor) {
     fail(

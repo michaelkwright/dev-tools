@@ -11,7 +11,7 @@ Signals that look like evidence and are not: counters, timestamps, empty results
 
 - A project set up with the project-bootstrap skill carries two evidence rules in its `CLAUDE.md` Database block: a value in a column is not evidence that the action which normally writes it happened, and a timestamp column proves nothing until something is confirmed to write it. Follow them there; `reference/evidence.md` holds the detail. In a project that was not bootstrapped, read the same block in `skills/project-bootstrap/templates/CLAUDE.md.tmpl` in this dev-tools checkout.
 - The unchecked-result shape (a client that returns its error instead of throwing) is recipe (a) in the dev-tools `ratchet-tests` skill, and its Postgres-client instance is in the `supabase-hardening` skill.
-- The fields of a per-call model log belong to the dev-tools `llm-call-hygiene` skill (planned).
+- The fields of a per-call model log are in the dev-tools `llm-call-hygiene` skill (`reference/spend-and-logging.md`).
 
 ## Checklist
 

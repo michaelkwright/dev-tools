@@ -22,7 +22,7 @@ Why: a gate that counts rows the list later excludes admits a caller whose list 
 Why: a blind retry spends an attempt and teaches nothing, and a cap set before anything is measured is set on a guess.
 
 - Capture the raw failure (a capped head of the response, its length, a coarse kind) on the failure path before spending a job's last retry, so a counted failure becomes an examined one.
-- A per-call log, written for every call and kept, turns "why did this fail last Tuesday" into one lookup instead of an investigation. The fields a model-call log needs belong to the dev-tools `llm-call-hygiene` skill (planned).
+- A per-call log, written for every call and kept, turns "why did this fail last Tuesday" into one lookup instead of an investigation. The fields a model-call log needs are in the dev-tools `llm-call-hygiene` skill (`reference/spend-and-logging.md`).
 - Filter a shared call log by an origin marker in its metadata, never by action name alone (`reference/evidence.md`).
 
 **An error report names the specific fault and carries no user content and no model text, including in its cause chain and its tags.**

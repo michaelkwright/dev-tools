@@ -45,7 +45,7 @@ Why: a helper list nobody checks decays into a rubber stamp that blesses whateve
 **A registry of sites compliant by a rule the walker cannot infer is earned, never asserted, and the scan is pinned to exactly its registered sites.**
 Why: recognition by name lets a same-named impostor in, and the exact pin turns any widening into a loud failure instead of a silent blessing.
 
-**The guard fails on its own failure: zero enumerated sites (g), any file it cannot parse, by name (h), and any declared shape with no sites unless declared absent with a reason (i); absent declarations are checked both ways, so a shape declared absent that has a site also fails (i).**
+**The guard fails on its own failure: zero enumerated sites or zero files walked (g), any file it cannot parse, by name (h), and any declared shape with no sites unless declared absent with a reason (i); absent declarations are checked both ways, so a shape declared absent that has a site also fails (i).**
 Why: a walker that finds nothing and a repo with nothing wrong must never be indistinguishable, and a declaration is an entry; it goes stale like one.
 
 **Prove the walker on synthetic sources, including what it must NOT flag.**

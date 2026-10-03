@@ -1,5 +1,7 @@
 # dev-tools
 
+**New to this? [Start here.](GETTING-STARTED.md)**
+
 Portable Claude Code skills and dev tooling, offered as-is. No support is promised. Issues are welcome; pull requests are not being accepted for now (see [CONTRIBUTING](CONTRIBUTING.md)). Report security problems privately (see [SECURITY](SECURITY.md)).
 
 ## Before you use this

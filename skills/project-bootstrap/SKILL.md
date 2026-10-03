@@ -7,6 +7,8 @@ description: Use to set up the planning → Claude Code workflow in a new repo, 
 
 Seeds a repo with a `CLAUDE.md`, the doc system and its contract test, a committed permission rule, and the Claude.ai planning instructions. The rules live in the templates and in the doc-system skill; this file only sequences them. "The target" below is the repo being bootstrapped; "dev-tools" is the checkout this skill lives in.
 
+The first planning chat, before this skill runs, can open with [`templates/kickoff-chat.md`](templates/kickoff-chat.md): it settles in conversation the answers step 3 asks for.
+
 ## 1. Locate and verify the source
 
 ```bash
@@ -54,8 +56,8 @@ Why: a question the user cannot parse gets a guessed answer, and a guess written
 |---|---|---|
 | "What's the project called?" (suggest the `package.json` name, else the directory name) | `PROJECT_NAME` | always |
 | "In one sentence, what does it do, and for whom?" | `PROJECT_PITCH`, and `PRODUCT_SUMMARY` unless they give a longer one; fill it as a sentence ending in a full stop, since the template runs straight on | always |
-| "What will count as launched, and by when?" | `LAUNCH_TARGET` | always |
-| "What must be true before launch? (For example: no user can ever see another user's data.)" | `LAUNCH_BLOCKERS` | always |
+| "What will count as launched, and by when?" | `LAUNCH_TARGET`, without a closing full stop (the template adds one) | always |
+| "What must be true before launch? (For example: no user can ever see another user's data.)" | `LAUNCH_BLOCKERS`, without a closing full stop | always |
 | "Will the app keep its data in a database?" | `database` block | always; suggest yes when `supabase/` exists |
 | "Will that database be Supabase?" | `supabase` block (both templates) | the answer above is yes |
 | "Have you created the Supabase project yet?" | the no-backend path below | Supabase, and no linked ref was found |
@@ -71,7 +73,7 @@ Why: a question the user cannot parse gets a guessed answer, and a guess written
 | "Will the repo be public (anyone can read it) or private?" | visibility | detection could not tell |
 | "What's the smallest first piece you want to build?" | the first `ROADMAP.md` epic (step 5b) | always; "not sure yet" is a fine answer |
 | "Save these setup files as a commit when done? (Recommended: yes.)" When step 2 found uncommitted files already there, list them and ask whether the commit includes them too. | step 5f commit | always |
-| "Create a `<visibility>` GitHub repo named `<name>`, and upload this commit to it?" | step 5f remote and push | `git remote` lists none, and the commit answer is yes |
+| "Create a `<visibility>` GitHub repo named `<name>`, and upload this commit to it?" (`<name>`: the project name, lowercased, spaces as dashes; the user may change it) | step 5f remote and push | `git remote` lists none, and the commit answer is yes |
 
 The `database` block is in `CLAUDE.md` only, `supabase` in both templates, `scheduled-ci` in `CLAUDE.md` only, and `strategy`, `digest`, `llm` and `domain-skill` in the instructions only.
 
@@ -172,6 +174,6 @@ Create it in the same registration: the gate stops with exit 2 when `vocab.d/` h
 - Files created, and files merged (with what was kept); everything but `.claude/project-instructions.local.md` is meant to be committed.
 - Optional blocks kept and stripped, the test path and command, and any `CLAUDE.md` note flagged as contradicting a template rule.
 - The commit made (its short SHA) or not, and the remote created and pushed or not.
-- Copying the instructions again: the one-line command for this platform with the file's full path (macOS `pbcopy < <path>`; Windows `type <path> | clip`; Linux the tool step 5d found), and where to paste: the Claude.ai Project's custom instructions.
+- Copying the instructions again: the one-line command for this platform with the file's full path (macOS `pbcopy < <path>`; Windows PowerShell `Get-Content -Raw -Encoding utf8 <path> | Set-Clipboard`; Linux the first of step 5d's three tools that `command -v` finds, even when the user said no there), and where to paste: the Claude.ai Project's custom instructions.
 - Left for the user: paste the instructions as above, then start a fresh planning chat; apply any schema steps by hand; any command that does not exist yet; replace the example epic in `ROADMAP.md`, if it was kept; after an ADOPT, describe the existing features in the spec; "regenerate the Claude.ai instructions after the backend exists", if there was none; push, if a remote existed.
 - CI templates are not yet part of this skill.

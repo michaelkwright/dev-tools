@@ -15,7 +15,7 @@ Placeholders appear in the body as double-brace UPPER_SNAKE tokens.
   LOCAL_TZ              Timezone the suite runs under locally.      Default: America/New_York
   SECOND_TZ             Opposite-side timezone for date-logic runs. Default: Asia/Tokyo
   TZ_TEST_GREP          Command listing timezone-sensitive tests.   Default: grep -rlE "process\.env\.TZ|setSystemTime|useFakeTimers|toFake|Intl\.DateTimeFormat" <every source and test directory found>;
-                        when the repo root holds source or test files, "." with --exclude-dir=node_modules --exclude-dir=.git and each build output folder
+                        when the repo root holds source or test files, "." with --exclude-dir=node_modules --exclude-dir=.git, each build output folder, and --exclude='*.md'
   SCHEDULED_CI_CMD      Latest scheduled CI runs (scheduled-ci).    Default: gh run list --workflow <detected workflow file> --limit 3
   DOC_CONTRACT_LIMITS   The doc-contract limits list.               Default: doc-system skill's reference/limits.md, filled from the test's CONFIG and DOC_CONTRACT_CMD; the doc-contract-limits:start/end markers around it stay (they are not optional-block markers)
   SUPABASE_PROJECT_REF  Supabase project ref (supabase block only). Default: $SUPABASE_PROJECT_REF if public or no project yet; else ask

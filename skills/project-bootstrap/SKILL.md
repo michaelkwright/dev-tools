@@ -85,8 +85,10 @@ Why: a stand-in passes every placeholder check and reads as fact, so later sessi
 **Declining vitest stops the bootstrap before anything is written.**
 Why: the doc check runs on it, and a bootstrap that cannot run its own check cannot say its docs are in shape.
 
-**A command answered "later" replaces its whole code span, backticks and any `TZ=` prefix included, with the plain text `NOT SET UP YET: <what to add>`, never a runnable default; the report lists each one.**
+**A command answered "later" replaces its whole code span, backticks and any `TZ=` prefix included, with plain text naming the command and marking it, `the <build / typecheck / test> command (NOT SET UP YET: <what to add>)`, never a runnable default; the report lists each one.**
 Why: a default command in `CLAUDE.md` reads as working, so a session runs it and builds on its failure.
+
+Adjust only the words around the replacement, and only as far as grammar needs: "→ one `{{BUILD_CMD}}` →" becomes "→ the build command (NOT SET UP YET: …), once →", and "(`TZ={{LOCAL_TZ}} {{TEST_CMD}}`)" becomes ", the test command (NOT SET UP YET: …),".
 
 **Turn a relative date in any answer ("end of next quarter", "in six weeks") into an absolute date, `Month D, YYYY`, counted from today, and confirm it with the user before writing it.**
 Why: a relative date is true only on the day it was said, and every later session reads it against its own today.

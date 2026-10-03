@@ -19,5 +19,5 @@ The canonical limits list. Fill each placeholder from the test's `CONFIG.limits`
 12. Every entry heading is followed by a non-empty body.
 13. At most {{PREAMBLE_MAX_LINES}} non-blank preamble lines, none shaped like entry body, precede a file's first entry.
 14. Each changelog file's newest entry sorts below the next file's oldest, unless the test declares the entry by name with a reason.
-15. The template-token check: no double-brace `UPPER_SNAKE_CASE` template token is left outside code fences and inline code in the files `CONFIG.templateTokens.files` lists, unless `CONFIG.templateTokens.allow` names its file and token with a reason. Run it alone with `{{DOC_CONTRACT_CMD}} -t "template token"`.
+15. The template-token check: no double-brace `UPPER_SNAKE_CASE` template token is left outside code fences and inline code in the files `CONFIG.templateTokens.files` lists, unless `CONFIG.templateTokens.allow` names its file and token with a reason. Run it alone with `{{DOC_CONTRACT_CMD}} -t "template token"`. Known limit: inline code is matched within one line, so a token inside an inline span that wraps onto a second line is not exempt; show it in a fenced block instead.
 16. This block states the same numbers as the test's `CONFIG`.

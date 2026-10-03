@@ -23,9 +23,10 @@ Optional blocks are wrapped in HTML-comment markers BEGIN:<name> and END:<name>.
   database      Keep when the app keeps its data in a database, Supabase or not; strip it for an app without one.
   strategy      Keep only when the repo already has strategy or launch-plan docs; never ask for paths otherwise.
   digest        Keep when health-report digests are synced into project knowledge.
-  supabase      Keep only with the database block, and only when the Supabase project exists, both MCP connectors are attached, and the ref and owner user ID are real answers; never with an invented value.
+  supabase      Keep only with the database block, and only when the Supabase project exists, both MCP connectors exist and are scoped to this project's ref, and the ref and owner user ID are real answers; never with an invented value.
   llm           Keep when the app spends a pay-as-you-go model API key.
   domain-skill  Keep when a domain skill exists for the project.
+  multi-user    Keep only when the user said the app is for many people, each with their own account; strip it for an app just for them.
 -->
 # {{PROJECT_NAME}}: Claude.ai Planning Instructions
 
@@ -33,7 +34,9 @@ Seeded from dev-tools @ {{DEV_TOOLS_SHA}} — these instructions are now the pro
 
 Pitch: {{PROJECT_PITCH}} Launch target: {{LAUNCH_TARGET}}. Launch-blocking: {{LAUNCH_BLOCKERS}}.
 This chat plans and drafts prompts; Claude Code does all the building.
+<!-- BEGIN:multi-user -->
 Evaluate every feature against production multi-user scale.
+<!-- END:multi-user -->
 
 ---
 
@@ -126,13 +129,16 @@ Why: that work needs no API key, so the metered key is spent only where the app 
 
 ## Supabase
 
-Project `{{SUPABASE_PROJECT_REF}}` has two MCP connectors, and they are not interchangeable.
+Project `{{SUPABASE_PROJECT_REF}}` has two MCP connectors, each scoped to this project only, and they are not interchangeable.
 
 **Use `{{SUPABASE_RO_CONNECTOR}}` (read-only) for all live verification: SQL, logs, tables, migrations, extensions, function inspection, advisors, docs. Never ask the human to approve a query it could have run.**
 Why: a read that cannot write cannot damage production, and a query run by hand is a wasted round trip.
 
-**Never use `{{SUPABASE_RW_CONNECTOR}}` (writable) in a planning chat; if a task seems to need it, stop and say so.**
-Why: it is reserved for Claude Code sessions doing rolled-back behavioral probes and deploys.
+**Use no other project's connector, even when the account lists several.**
+Why: connectors belong to the account, not to this Project, and another project's answers from its own database.
+
+**`{{SUPABASE_RW_CONNECTOR}}` (writable) lives only in Claude Code, added at local scope; if it, or any writable Supabase connector, appears in a planning chat, or a task seems to need one, stop and say so.**
+Why: it is reserved for Claude Code sessions doing rolled-back behavioral probes and deploys, and a writable connector in Claude.ai would also load in every Claude Code session on the account.
 
 **The read-only connector bypasses RLS, so its counts are fleet-wide; scope to `{{OWNER_USER_ID}}` when a per-user figure matters.**
 Why: an unscoped count covers every user's orders while reading like one user's.

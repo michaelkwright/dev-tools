@@ -9,8 +9,8 @@ Settle these with me, in plain questions:
 1. The idea in one sentence: what it does, and for whom.
 2. The first user, what "launched" means for them, and a target date.
 3. The devices and conditions it will be used in: [for example, "a phone at a shop counter, with patchy wifi"].
-4. The rough size and shape of the data: how many orders, items or users, and how they relate.
-5. Whether a backend (a hosted database such as Supabase) exists yet, or is still to be created.
+4. Whether the app is for many people, each with their own account, or just for me; and the rough size and shape of the data: how many orders, items or users, and how they relate.
+5. Whether a backend (a hosted database such as Supabase) exists yet, or is still to be created; if it exists, whether its two connectors (read-only in Claude.ai, writable in Claude Code) are set up for this project only.
 6. Whether the dev-tools toolkit is installed, and which commit I read.
 7. Where the repo will live on my computer: [the folder]. Claude Code is started in that folder.
 8. Whether the repo will be public (anyone can read it) or private.

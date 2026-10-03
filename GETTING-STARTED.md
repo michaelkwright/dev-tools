@@ -83,6 +83,8 @@ When the questions are settled, the chat drafts your first prompt for Claude Cod
 
 Paste the drafted prompt into Claude Code, started in your project folder. It asks Claude Code to set up the repo with the `project-bootstrap` skill. Bootstrap reads the folder, asks the few things it can't work out, shows you every change to a file that already exists before making it, and runs a check that the new docs are in shape. At the end it offers to save everything as a commit and, if there's no GitHub repo yet, to create one.
 
+One question is whether the app is for many people, each with their own account, or just for you. Answer it plainly: only for many people does the planning chat weigh every feature against heavy use by many accounts at once.
+
 ## 6. After bootstrap
 
 - After bootstrap, it offers to copy the Claude.ai instructions to your clipboard. Say yes, then paste them into the Project's custom instructions: on the Project's page, **Set project instructions**, paste, **Save instructions** ([where that is](https://support.claude.com/en/articles/9519177-how-can-i-create-and-manage-projects)).
@@ -95,14 +97,40 @@ Paste the drafted prompt into Claude Code, started in your project folder. It as
 - To see hidden folders: in macOS Finder, press **Cmd+Shift+Period** (press it again to hide them). In Windows File Explorer there is no shortcut: choose **View > Show > Hidden items** ([Microsoft's guide](https://support.microsoft.com/en-us/windows/experience/fileexplorer/file-explorer-in-windows)).
 - Then start a fresh chat in the Project, so it starts with the new instructions. After the first push, connect the repo to the Project so the chat can read your docs ([Use the GitHub integration](https://support.claude.com/en/articles/10167454-use-the-github-integration)).
 
-## 7. The loop
+## 7. Supabase connectors (Supabase users only)
+
+A **connector** lets Claude reach your Supabase project. Each project needs its own pair, each tied to that one project. Skip this until the Supabase project exists; bootstrap asks whether the pair is set up and, if not, gives you these same steps with your project's ID filled in. Your project's ID is the short code after `/project/` in the Supabase dashboard's address.
+
+1. **Read-only, in Claude.ai**, for planning chats ([Claude's help page on custom connectors](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp)):
+   - Go to **Customize > Connectors**, click **+ Add**, then **Add custom connector**. On a Team or Enterprise plan, an owner adds it under **Organization settings > Connectors**, and you then click **Connect** under **Customize > Connectors**.
+   - Name it after the project, such as `Supabase order-desk read-only`.
+   - For the server URL, enter `https://mcp.supabase.com/mcp?project_ref=<your project ID>&read_only=true`.
+   - Keep the default sign-in settings, and sign in to Supabase when asked.
+2. **Writable, in Claude Code**, from the project's folder ([Supabase's MCP guide](https://supabase.com/docs/guides/getting-started/mcp), [Claude Code's MCP guide](https://code.claude.com/docs/en/mcp)). Replace `<your project ID>` before running it:
+
+   ```bash
+   claude mcp add --transport http supabase-order-desk-rw --scope local "https://mcp.supabase.com/mcp?project_ref=<your project ID>"
+   ```
+
+   Then start `claude` in that folder, type `/mcp`, choose `supabase-order-desk-rw`, and choose Authenticate. `--scope local` keeps it out of your repo and out of your other projects.
+3. Ask Claude Code to regenerate the Claude.ai instructions with the two names, then paste them into the Project again.
+
+Never add the writable one in Claude.ai, or with `--scope project`, and never use one that reaches every project in your account. Supabase's own guide shows `--scope project`, which writes a file into your repo; with the project ID added, that file publishes it with your next push.
+
+## 8. Running more than one project
+
+- Give each project its own folder, and start Claude Code in that project's own folder. A session works on the folder it starts in, and a writable connector added with `--scope local` loads only there.
+- Give each project its own connector pair, named after the project. Every connector you add in Claude.ai is listed in every chat and every Claude Code session on your account, so in a planning chat turn on only that project's read-only one: **+ > Connectors** in the chat.
+- Each project's `CLAUDE.md` tells its sessions to leave alone any process, file, database or deploy they can't tie to their own repo, since another project's session may be running at the same time.
+
+## 9. The loop
 
 1. The planning chat drafts a prompt.
 2. You paste it into Claude Code, which builds it.
 3. When Claude Code stops with a question, answer build questions (which file, which command) there. Take decisions (what the product should do, what to build next) back to the planning chat.
 4. When Claude Code finishes, paste only its final summary back into the planning chat, not the whole session.
 
-## 8. Glossary
+## 10. Glossary
 
 - **Repo** (repository): a project folder that git tracks, with its full history of commits.
 - **Commit**: a saved snapshot of the repo's files, named by a short code.
@@ -117,5 +145,5 @@ For Supabase users:
 
 - **Project ref**: the short code naming your Supabase project, seen in its dashboard address after `/project/`. It isn't a password, but a public repo shouldn't hold it.
 - **Owner user ID**: your own account's ID in your app (dashboard: Authentication > Users). The planning chat uses it to count just your data.
-- **Read-only vs writable connection**: two ways of linking Supabase to Claude.ai. The read-only one can look but never change anything; the writable one can change data and is kept for Claude Code's careful, undone-afterwards checks. The planning chat uses only the read-only one.
+- **Read-only vs writable connector**: the two links between Claude and one Supabase project (section 7). The read-only one, in Claude.ai, can look but not change data; the writable one, in Claude Code only, can change data and is kept for Claude Code's careful, undone-afterwards checks. The planning chat uses only the read-only one.
 - **Why schema changes are applied by hand**: you paste them into the dashboard's SQL editor yourself. Supabase's push command keeps its own history that conflicts with hand-applied changes, so Claude Code is blocked from running it.

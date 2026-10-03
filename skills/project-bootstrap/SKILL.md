@@ -34,9 +34,10 @@ Read the target and derive every placeholder default from what is there (each te
 
 - `package.json`: name, scripts, the test runner, the lockfile's package manager; any `vitest.config.*` or `test` key in `vite.config.*`.
   - `BUILD_CMD`: the build script. `TYPECHECK_CMD`: the typecheck script, else the `tsc` step the build runs (e.g. `npx tsc -b`). `TEST_CMD`: the test script (`npm test`) when it runs the test runner, else the runner directly. A script that only prints an error, like npm's default, is no test command.
-  - `TZ_TEST_GREP`: the default grep over every directory that holds source or tests.
+  - `TZ_TEST_GREP`: the default grep over every directory this step finds holding source or tests, the repo root included. When the root itself holds source or test files, search `.` with `--exclude-dir=node_modules --exclude-dir=.git` and one `--exclude-dir` for each build output folder; otherwise list the directories, never `src/` alone unless it is the only one.
 - Framework markers (vite, react, phaser): a DOM framework means the report points to the vitest-suite-speed skill for the test-environment split.
 - `supabase/` suggests the database and supabase blocks; `supabase/.temp/project-ref` holds a linked ref, which also means the Supabase project exists.
+- MCP configs in the target: `.mcp.json`, `.cursor/mcp.json` and `.vscode/mcp.json`, for the step-5e connector check.
 - Scheduled CI: a `.github/workflows/` file with a `schedule:` trigger keeps the `scheduled-ci` block and fills `SCHEDULED_CI_CMD` with that file's name. With none, the block is stripped without asking.
 - Strategy docs: a Markdown file whose name or first heading marks it as strategy, positioning or launch plan (`STRATEGY.md`, `docs/launch-plan.md`, say). Only a found doc lets step 3 offer the `strategy` block; with none, it is stripped without asking.
 - `LOCAL_TZ`: the system timezone, from `node -p 'Intl.DateTimeFormat().resolvedOptions().timeZone'`, else the zone name in `readlink /etc/localtime`. Step 3 only confirms it.
@@ -45,12 +46,12 @@ Read the target and derive every placeholder default from what is there (each te
 - Visibility: `gh repo view --json visibility` when `gh` is available and the remote is on GitHub; otherwise ask.
 - The contract-test path: `src/test/doc-contracts.test.ts` by default. Use the repo's test directory if tests live elsewhere. If a tsconfig includes the path without node types, use a top-level `test/` outside every tsconfig instead, since the test imports `node:fs`.
 
-**Already bootstrapped** means every piece exists: `CLAUDE.md` with a `Seeded from dev-tools @` line and the limits markers; the doc system (the seed set, or the files its ADOPT mapping named); the contract test; `.claude/settings.json` with the deny rule if `CLAUDE.md` has a Supabase section; and the `.gitignore` line. If so, skip steps 3 to 6 and change nothing tracked. Run step 5e with the command recorded in `CLAUDE.md`, and report "already bootstrapped from dev-tools @ <recorded SHA> (current: <DEV_TOOLS_SHA>); nothing changed" with the 5e results. Never re-seed or update files the project now owns. If only some pieces exist, do only the missing ones. `.claude/project-instructions.local.md` is untracked, so it is not a piece: when it is missing, or the user asks to regenerate it (once the backend exists, say), offer step 5d alone, asking only the step-3 questions it needs.
+**Already bootstrapped** means every piece exists: `CLAUDE.md` with a `Seeded from dev-tools @` line and the limits markers; the doc system (the seed set, or the files its ADOPT mapping named); the contract test; `.claude/settings.json` with the deny rule if `CLAUDE.md` has a Supabase section; and the `.gitignore` line. If so, skip steps 3 to 6 and change nothing tracked. Run step 5e with the command recorded in `CLAUDE.md`, and report "already bootstrapped from dev-tools @ <recorded SHA> (current: <DEV_TOOLS_SHA>); nothing changed" with the 5e results. Never re-seed or update files the project now owns. If only some pieces exist, do only the missing ones. `.claude/project-instructions.local.md` is untracked, so it is not a piece: when it is missing, or the user asks to regenerate it (once the backend or its connectors exist, say), offer step 5d alone, asking only the step-3 questions it needs.
 
 ## 3. Ask only what detection can't answer, in one batch
 
-**Ask in plain words a first-time user can answer, never in this file's vocabulary (block names, placeholder names, "connector"); the table maps each answer to what it sets.**
-Why: a question the user cannot parse gets a guessed answer, and a guess written into the instructions reads as fact to every later session.
+**Ask in plain words a first-time user can answer, never in this file's vocabulary (block names, placeholder names); the table maps each answer to what it sets.**
+Why: a question the user cannot parse gets a guessed answer, and a guess written into the instructions reads as fact to every later session. "Connector" is allowed, since Claude.ai's own menu uses it (Customize → Connectors).
 
 | Ask | Sets | Ask only when |
 |---|---|---|
@@ -61,9 +62,11 @@ Why: a question the user cannot parse gets a guessed answer, and a guess written
 | "Will the app keep its data in a database?" | `database` block (both templates) | always; suggest yes when `supabase/` exists |
 | "Will that database be Supabase?" | `supabase` block (both templates) | the answer above is yes |
 | "Have you created the Supabase project yet?" | the no-backend path below | Supabase, and no linked ref was found |
+| "Have you set up this project's two database connectors yet? (One that can only read, added in Claude.ai; one that can also change data, added in Claude Code. Each is tied to this one Supabase project: its address includes `project_ref=` and this project's ID.)" | the no-connectors path below | the project exists |
+| "What are their names? And is each one tied to this project only, or can it reach every project in your Supabase account?" | `SUPABASE_RO_CONNECTOR`, `SUPABASE_RW_CONNECTOR`; an account-wide writable one is refused (below) | the connectors exist |
 | "What's the project's ID? It's the short code after `/project/` in the Supabase dashboard's address." | `SUPABASE_PROJECT_REF` | the project exists and no linked ref was found |
 | "Have you signed up in your own app yet? If so, what's your user ID? (Supabase dashboard → Authentication → Users, your row.)" | `OWNER_USER_ID` | the project exists |
-| "Have you added Supabase to your Claude.ai Project as connections? If so, what are the names of the one that can only read and the one that can also change data?" | `SUPABASE_RO_CONNECTOR`, `SUPABASE_RW_CONNECTOR` | the project exists |
+| "Is the app for many people, each with their own account, or just for you?" | `multi-user` block (instructions), kept only for many people | always |
 | "Will the app call an AI model, like Claude, with a paid API key?" | `llm` block | always |
 | "I found `<paths>`. Should the planning chat treat them as the project's strategy and launch plan?" | `strategy` block, `STRATEGY_DOC`, `LAUNCH_PLAN_DOC` (delete the line of any doc not found) | step 2 found such a doc |
 | "Do you keep dated status reports that you add to the Claude.ai Project? If so, where, and how are they named?" | `digest` block, `DIGEST_PATTERN` | always; most new projects say no |
@@ -75,9 +78,11 @@ Why: a question the user cannot parse gets a guessed answer, and a guess written
 | "Will the repo be public (anyone can read it) or private?" | visibility | detection could not tell |
 | "What's the smallest first piece you want to build?" | the first `ROADMAP.md` epic (step 5b) | always; "not sure yet" is a fine answer |
 | "Save these setup files as a commit when done? (Recommended: yes.)" When step 2 found uncommitted files already there, list them and ask whether the commit includes them too. | step 5f commit | always |
-| "Create a `<visibility>` GitHub repo named `<name>`, and upload this commit to it?" (`<name>`: the project name, lowercased, spaces as dashes; the user may change it) | step 5f remote and push | `git remote` lists none, and the commit answer is yes |
 
-The `database` and `supabase` blocks are in both templates, `scheduled-ci` in `CLAUDE.md` only, and `strategy`, `digest`, `llm` and `domain-skill` in the instructions only.
+The `database` and `supabase` blocks are in both templates, `scheduled-ci` in `CLAUDE.md` only, and `strategy`, `digest`, `llm`, `domain-skill` and `multi-user` in the instructions only.
+
+**Ask the remote question once, as its own follow-up after the batch is answered, and only when `git remote` lists none and the commit answer is yes: "Create a `<visibility>` GitHub repo named `<name>`, and upload this commit to it?", with the visibility the batch settled or detection found (`<name>`: the project name, lowercased, spaces as dashes; the user may change it).**
+Why: the question names the visibility, so asked inside the batch it states a guess the user may not have settled yet.
 
 **Never write an invented value: a placeholder the user has not answered and detection has not found is stripped with its block, or written as the environment variable below, never filled with a made-up stand-in.**
 Why: a stand-in passes every placeholder check and reads as fact, so later sessions build on an ID that does not exist.
@@ -96,7 +101,32 @@ Why: a relative date is true only on the day it was said, and every later sessio
 **No backend yet: when the database is Supabase but the project does not exist, ask nothing more about it. Keep `CLAUDE.md`'s supabase block (with `$SUPABASE_PROJECT_REF` as below) and the step-5c deny rule; strip the instructions' supabase block.**
 Why: the build rules and the deny rule apply from the first migration, while the planning chat's Supabase rules name a project and connections that do not exist yet. The report says "regenerate the Claude.ai instructions after the backend exists".
 
-The instructions' supabase block is kept only when the ref, the owner user ID and both connection names are all real answers; otherwise it is stripped the same way, and the report says what to finish before regenerating.
+The instructions' supabase block is kept only when the ref, the owner user ID and the names of both connectors, each scoped to this project, are all real answers; otherwise it is stripped the same way, and the report says what to finish before regenerating.
+
+**No connectors yet: when the project exists but its two connectors do not, ask nothing more about them, strip the instructions' supabase block, and give the connector setup below in the report, with "regenerate the Claude.ai instructions after the connectors exist".**
+Why: the planning chat's Supabase rules name each connector, and a name written before the connector exists reads as one the chat can use.
+
+**Refuse an account-wide writable connector: when the user says the one that can change data reaches every project in their account, record no name and go on as if the connectors were not set up; give the scoped setup, and tell them to remove the account-wide one.**
+Why: an account-wide connector takes the project ID as an argument on every call, so with sessions open on two projects, one wrong ID changes the other project's database; a connector scoped to one project cannot.
+
+An account-wide read-only connector is not refused, but the report flags it and gives the scoped setup for it.
+
+The connector setup, as the report gives it, in plain steps (`<ref>` is the project's ID; `<slug>` is the project name, lowercased, spaces as dashes):
+
+1. The read-only connector, in Claude.ai, for planning chats ([Claude's help page on custom connectors](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp)):
+   - Customize → Connectors → "+ Add" → "Add custom connector". On a Team or Enterprise plan an owner adds it under Organization settings → Connectors → Add → Custom → Web, and you then choose Connect under Customize → Connectors.
+   - Name: `Supabase <project name> read-only`.
+   - Remote MCP server URL: `https://mcp.supabase.com/mcp?project_ref=<ref>&read_only=true`.
+   - Continue, keep the default sign-in settings, and sign in to Supabase when asked.
+   - In each planning chat, turn on only this project's connector: "+" → Connectors.
+2. The writable connector, in Claude Code at local scope ([Supabase's MCP guide](https://supabase.com/docs/guides/getting-started/mcp), [Claude Code's MCP guide](https://code.claude.com/docs/en/mcp)). From the project's folder:
+
+   ```bash
+   claude mcp add --transport http supabase-<slug>-rw --scope local "https://mcp.supabase.com/mcp?project_ref=<ref>"
+   ```
+
+   Then, in a Claude Code session started in that folder, run `/mcp`, choose `supabase-<slug>-rw`, and Authenticate. Local scope stores it in `~/.claude.json` under this folder's path: nothing goes into the repo, and sessions in other projects never load it. Never add it at project scope, which writes `.mcp.json` into the repo with the project ref in it, and never in Claude.ai, whose connectors load in every Claude Code session on the account.
+3. Regenerate the Claude.ai instructions (step 5d alone) with the two names.
 
 **If the target is public, or no Supabase project exists yet, no project ref or ID goes into any committed file: write `$SUPABASE_PROJECT_REF` in place of the ref and add a line under that code block saying the ref is kept out of the repo, set it locally. Say so to the user.**
 Why: a public repo publishes everything committed to it, forever. A private repo may hold the ref; the report says to swap it out before the repo ever goes public.
@@ -113,6 +143,9 @@ Why: the project's existing notes and settings are its own, and a bootstrap that
 - `package.json` and the lockfile change only through an approved dependency install, or the `test` script the step-3 test answer approved.
 
 ## 5. Write, in this order
+
+**Put every temporary file (a restore copy, a captured output) in the session's scratch directory, or inside the target when there is none, and never beside the target; delete each one inside the target before staging.**
+Why: the target's parent folder may hold other projects, and a file left there is in nobody's repo and nobody cleans it up.
 
 **ADOPT only, before any other write: install the contract test with its approved `CONFIG` (5b's path, and vitest per step 3), then run its template-token check alone, `npx vitest run <test path> -t "template token"`, in the foreground and unpiped. Every token it reports was already there: list each for the user and offer a `CONFIG.templateTokens.allow` entry for it (file, token, and a reason the user gives), never an edit to their text.**
 Why: a token the project wrote is the project's to fix or keep, and one bootstrap cleared silently could be a value someone meant to fill.
@@ -169,12 +202,25 @@ printf '%s\n' "$ref" | grep -qxE '[a-z0-9]{20}'                                 
 printf '%s\n' "$owner_id" | grep -qxiE '[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-9a-f]{12}'      # user ID
 ```
 
+With the supabase block kept, check the connectors from the target's folder (local-scope servers load per folder), with `$ref` empty when no ref is known:
+
+```bash
+for f in .mcp.json .cursor/mcp.json .vscode/mcp.json; do [ -f "$f" ] && grep -lF -e project_ref -e project-ref ${ref:+-e "$ref"} "$f"; done    # must print nothing
+command -v claude >/dev/null && mcp_list="$(claude mcp list 2>&1)" && printf '%s\n' "$mcp_list" | grep -i supabase | grep -vE 'project_ref=|--project-ref'    # must print nothing
+```
+
+**Flag in the report every repo-level MCP config the first line prints and every Supabase server the second prints, with the scoped setup; when `claude` is not on the PATH, say the server check was not run.**
+Why: a repo-level config holding the ref is one commit from publishing it, and a server without a project ref reaches every project in the account.
+
 **f. Commit and remote**, per the step-3 answers:
-- Commit yes: run `git init` first if the target is not a repository, stage the files this bootstrap created or merged (plus the already-uncommitted files only if the user said to include them), confirm with `git status` that nothing ignored-worthy (`node_modules/`, build output, `.claude/project-instructions.local.md`) is staged, and commit as `Set up the project workflow (dev-tools @ <DEV_TOOLS_SHA>)`.
+- Commit yes: run `git init` first if the target is not a repository, stage the files this bootstrap created or merged (plus the already-uncommitted files only if the user said to include them), confirm with `git status` that nothing ignored-worthy (`node_modules/`, build output, `.claude/project-instructions.local.md`, an MCP config holding the ref) is staged, and commit as `Set up the project workflow (dev-tools @ <DEV_TOOLS_SHA>)`.
 - Remote yes: check `gh auth status` first; then `gh repo create <name> --<public|private> --source . --remote origin --push`. If `gh` is missing or signed out, skip it and say how to do it later.
 
 **Never push without a yes to the step-3 remote question; with an existing remote, leave the push to the user.**
 Why: a push publishes, and for a public repo it cannot be taken back.
+
+**The bootstrap commit follows the session's normal commit attribution settings: it adds no trailer they do not add, and removes none they do.**
+Why: attribution is the user's configured choice, and a setup commit that edits it on its own misstates who wrote the commit.
 
 ## 6. Maintainers only: scrub registration
 
@@ -192,8 +238,9 @@ Create it in the same registration: the gate stops with exit 2 when `vocab.d/` h
 
 - Files created, and files merged (with what was kept); everything but `.claude/project-instructions.local.md` is meant to be committed.
 - Optional blocks kept and stripped, the test path and command, and any `CLAUDE.md` note flagged as contradicting a template rule.
-- Checks: one line for each check this run made, ending `recorded: <the command as CLAUDE.md records it>` when the repo can rerun it, else `bootstrap only`. The doc-contract test is recorded as `DOC_CONTRACT_CMD`, and its template-token check, which runs inside it, gets a line of its own recorded as `DOC_CONTRACT_CMD -t "template token"`; the build is recorded as `BUILD_CMD`. The source pin, the break-and-restore proof, the step-5e `{{`, placeholder, stand-in and layout checks, the Supabase shape checks and the staging check are bootstrap only; an ADOPT's pre-run is the template-token check, so it is recorded.
+- Checks: one line for each check this run made, ending `recorded: <the command as CLAUDE.md records it>` when the repo can rerun it, else `bootstrap only`. The doc-contract test is recorded as `DOC_CONTRACT_CMD`, and its template-token check, which runs inside it, gets a line of its own recorded as `DOC_CONTRACT_CMD -t "template token"`; the build is recorded as `BUILD_CMD`. The source pin, the break-and-restore proof, the step-5e `{{`, placeholder, stand-in and layout checks, the Supabase shape checks, the connector checks and the staging check are bootstrap only; an ADOPT's pre-run is the template-token check, so it is recorded.
 - The commit made (its short SHA) or not, and the remote created and pushed or not.
 - Copying the instructions again: the one-line command for this platform with the file's full path (macOS `pbcopy < <path>`; Windows PowerShell `Get-Content -Raw -Encoding utf8 <path> | Set-Clipboard`, untested on Windows; Linux the first of step 5d's three tools that `command -v` finds, even when the user said no there), and where to paste: the Claude.ai Project's custom instructions.
-- Left for the user: paste the instructions as above, then start a fresh planning chat; apply any schema steps by hand; each command written as `NOT SET UP YET`, with what to add; replace the example epic in `ROADMAP.md`, if it was kept; after an ADOPT, describe the existing features in the spec; "regenerate the Claude.ai instructions after the backend exists", if there was none; push, if a remote existed.
+- Connectors, with the supabase block kept: each flag from the step-5e connector checks; and, when the project exists without its two scoped connectors (none yet, or an account-wide writable one refused), the connector setup from step 3, with the real ref when it is known.
+- Left for the user: paste the instructions as above, then start a fresh planning chat; apply any schema steps by hand; each command written as `NOT SET UP YET`, with what to add; replace the example epic in `ROADMAP.md`, if it was kept; after an ADOPT, describe the existing features in the spec; "regenerate the Claude.ai instructions after the backend exists", if there was none, or "regenerate the Claude.ai instructions after the connectors exist", if the backend exists without them; push, if a remote existed.
 - CI templates are not yet part of this skill.

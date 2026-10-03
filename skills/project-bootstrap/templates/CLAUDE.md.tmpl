@@ -14,14 +14,15 @@ Placeholders appear in the body as double-brace UPPER_SNAKE tokens.
   CHANGELOG_WINDOW      Entries kept in CHANGELOG.md before rolling. Default: 50
   LOCAL_TZ              Timezone the suite runs under locally.      Default: America/New_York
   SECOND_TZ             Opposite-side timezone for date-logic runs. Default: Asia/Tokyo
-  TZ_TEST_GREP          Command listing timezone-sensitive tests.   Default: grep -rlE "process\.env\.TZ|setSystemTime|useFakeTimers|toFake|Intl\.DateTimeFormat" src/
+  TZ_TEST_GREP          Command listing timezone-sensitive tests.   Default: grep -rlE "process\.env\.TZ|setSystemTime|useFakeTimers|toFake|Intl\.DateTimeFormat" <every source and test directory found>;
+                        when the repo root holds source or test files, "." with --exclude-dir=node_modules --exclude-dir=.git and each build output folder
   SCHEDULED_CI_CMD      Latest scheduled CI runs (scheduled-ci).    Default: gh run list --workflow <detected workflow file> --limit 3
   DOC_CONTRACT_LIMITS   The doc-contract limits list.               Default: doc-system skill's reference/limits.md, filled from the test's CONFIG and DOC_CONTRACT_CMD; the doc-contract-limits:start/end markers around it stay (they are not optional-block markers)
   SUPABASE_PROJECT_REF  Supabase project ref (supabase block only). Default: $SUPABASE_PROJECT_REF if public or no project yet; else ask
 
 Optional blocks are wrapped in HTML-comment markers BEGIN:<name> and END:<name>.
   database      Postgres in general. Keep for any Postgres-backed project.
-  supabase      Supabase specifics. Keep only with the database block, even before the Supabase project exists.
+  supabase      Supabase specifics, plus one cross-link line under Session Workflow. Keep only with the database block, even before the Supabase project exists.
   scheduled-ci  The scheduled-CI pre-flight check. Keep only when a workflow in .github/workflows/ has a schedule trigger.
 -->
 # {{PROJECT_NAME}}: Claude Code Project Context
@@ -80,7 +81,15 @@ Why: a fix to one copy leaves the rest silently wrong, and "a sibling already ha
 Why: a session grades its work against the question it was asked and stops there, even with an identical defect next door.
 
 **Airtight by default: when unsure whether a shortcut is acceptable, take the production-correct path.**
-Why: shortcuts become shipped behavior, and multi-user scale finds them.
+Why: shortcuts become shipped behavior, and real use finds them.
+
+**Assume another project's session may be running on this machine: never act on, wait on or stop a process, file, database or deploy you cannot tie to this repo.**
+Why: parallel sessions share one machine and one account, so a test run, temp file, connector or deploy target that looks like this project's may be another's, and touching it breaks work that is not this session's.
+
+The Gates section's leftover test-runner check applies this rule to test runs.
+<!-- BEGIN:supabase -->
+The Supabase section's connector rule applies it to databases.
+<!-- END:supabase -->
 
 **Write a precedent into this file the moment it is confirmed load-bearing, not at session end.**
 Why: conversation history is not repo state, and a lesson left in scrollback is one context compaction away from lost.
@@ -130,7 +139,7 @@ Why: a foreground run yields the exit code directly, while polling adds no infor
 Why: a run stacked on a previous run's live workers contends for the same cores and looks exactly like a hang.
 
 **Wait for or stop only a process that check lists; never stop or wait on one it does not.**
-Why: a match by runner name alone also catches another project's run, which is not this session's to stop or wait on.
+Why: a match by runner name alone also catches another project's run, which is not this session's to stop or wait on; this is the parallel-session rule under Session Workflow, applied to test runs.
 
 **Session order: implement → scoped runs (`{{SCOPED_TEST_CMD}}`) → break probes observed failing on scoped runs → restore by copy and confirm with `diff` → spec-update protocol → scoped doc contracts → one `{{BUILD_CMD}}` → one full suite on the final bytes.**
 Why: the single full run on the committed bytes proves everything an earlier full run would, at a fraction of the cost.
@@ -216,6 +225,12 @@ Why: default privileges grant EXECUTE and table access to those roles at creatio
 
 **Use the read-only MCP connector for verification; reserve the writable connector for rolled-back probes and deploys.**
 Why: a read that cannot write cannot damage production, and the writable connector's extra reach is needed only where a transaction must run.
+
+**The writable connector is scoped to this project (its URL carries `project_ref=`) and added in Claude Code at local scope (`claude mcp add --transport http <name> --scope local <url>`); never use an account-wide writable connector, and never commit an MCP config (`.mcp.json` or any other) holding the project ref.**
+Why: an account-wide connector takes the project ID as an argument, so one wrong ID changes another project's database, and a project-scope config puts the ref in the repo; this is the parallel-session rule under Session Workflow, applied to databases.
+
+**Use only the connectors scoped to this project's ref; connectors added in Claude.ai load in every Claude Code session, so another project's may be listed too.**
+Why: another project's connector answers from its own database, and a result from it can pass for this project's.
 <!-- END:supabase -->
 
 ---

@@ -20,9 +20,9 @@ Placeholders appear in the body as double-brace UPPER_SNAKE tokens.
   DOMAIN_SKILL_PATH      Domain skill to read (domain-skill block).   Default: none; ask
 
 Optional blocks are wrapped in HTML-comment markers BEGIN:<name> and END:<name>.
-  strategy      Keep when the repo has strategy or launch-plan docs.
+  strategy      Keep only when the repo already has strategy or launch-plan docs; never ask for paths otherwise.
   digest        Keep when health-report digests are synced into project knowledge.
-  supabase      Keep when the project runs on Supabase with both MCP connectors attached.
+  supabase      Keep only when the Supabase project exists, both MCP connectors are attached, and the ref and owner user ID are real answers; never with an invented value.
   llm           Keep when the app spends a pay-as-you-go model API key.
   domain-skill  Keep when a domain skill exists for the project.
 -->

@@ -14,6 +14,9 @@ Portable Claude Code skills and project templates, offered as-is.
 **Name no project, repo, company or person, and include no IDs, commit SHAs, run IDs, keys or account IDs.**
 Why: this repo is public, and any one of those ties a rule back to where it was learned.
 
+**Never name or describe any project the maintainer works on, including the one whose run produced a finding; describe that run only generically ("a first run by a new user").**
+Why: a finding's origin is as identifying as a name in a rule, and it is the part most tempting to cite.
+
 **Set every example in the orders/items domain.**
 Why: one neutral domain reveals nothing and reads the same across every skill.
 

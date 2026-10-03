@@ -15,13 +15,14 @@ Placeholders appear in the body as double-brace UPPER_SNAKE tokens.
   LOCAL_TZ              Timezone the suite runs under locally.      Default: America/New_York
   SECOND_TZ             Opposite-side timezone for date-logic runs. Default: Asia/Tokyo
   TZ_TEST_GREP          Command listing timezone-sensitive tests.   Default: grep -rlE "process\.env\.TZ|setSystemTime|useFakeTimers|toFake|Intl\.DateTimeFormat" src/
-  SCHEDULED_CI_CMD      Shows the latest scheduled CI runs.         Default: gh run list --workflow nightly.yml --limit 3
+  SCHEDULED_CI_CMD      Latest scheduled CI runs (scheduled-ci).    Default: gh run list --workflow <detected workflow file> --limit 3
   DOC_CONTRACT_LIMITS   The doc-contract limits list.               Default: doc-system skill's reference/limits.md, filled from the test's CONFIG; the doc-contract-limits:start/end markers around it stay (they are not optional-block markers)
-  SUPABASE_PROJECT_REF  Supabase project ref (supabase block only). Default: none; ask
+  SUPABASE_PROJECT_REF  Supabase project ref (supabase block only). Default: $SUPABASE_PROJECT_REF if public or no project yet; else ask
 
 Optional blocks are wrapped in HTML-comment markers BEGIN:<name> and END:<name>.
-  database   Postgres in general. Keep for any Postgres-backed project.
-  supabase   Supabase specifics. Keep only with the database block.
+  database      Postgres in general. Keep for any Postgres-backed project.
+  supabase      Supabase specifics. Keep only with the database block, even before the Supabase project exists.
+  scheduled-ci  The scheduled-CI pre-flight check. Keep only when a workflow in .github/workflows/ has a schedule trigger.
 -->
 # {{PROJECT_NAME}}: Claude Code Project Context
 
@@ -155,8 +156,10 @@ Why: a literal date ages out of its window months later and fails on an unrelate
 **Write fixture dates as `daysAgo(n)` / `dateDaysAgo(n)` with a literal `n`; a test that injects a pinned clock into the code under test anchors both ends or neither; the ratchet in the dev-tools `ratchet-tests` skill (`skills/ratchet-tests`) fails the diff that adds a literal date.**
 Why: fixtures anchored to the real clock march forward while an injected cutoff stays put, which builds a new expiry date into the fix for the old one.
 
+<!-- BEGIN:scheduled-ci -->
 **The local gate is the primary gate; scheduled CI is a backstop that catches a skipped local gate up to a day late, so check the latest scheduled run (`{{SCHEDULED_CI_CMD}}`) at session pre-flight.**
 Why: a red scheduled run means something already slipped past a local gate.
+<!-- END:scheduled-ci -->
 
 <!-- BEGIN:database -->
 ---

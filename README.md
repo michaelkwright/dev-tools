@@ -30,7 +30,7 @@ cd dev-tools
 ./install.sh
 ```
 
-To pin, run `git checkout <commit>` here before installing (see [Before you use this](#before-you-use-this)).
+To pin, run `git checkout <commit>` here before installing (see [Before you use this](#before-you-use-this)). Git then reports a "detached HEAD": that is expected and fine. `project-bootstrap` checks only that the checkout is clean and that the pinned commit is on this repo's published default branch.
 
 `install.sh` links each folder under `skills/` into `~/.claude/skills/` as an absolute symlink, so whatever this checkout holds is live everywhere: a `git pull` or `git checkout` here changes every installed skill at once. It is safe to re-run. A symlink that points elsewhere is repointed (and the old target is printed). A real file or directory already at that name is never touched: the script refuses it and exits non-zero. Set `CLAUDE_SKILLS_DIR` to install somewhere other than `~/.claude/skills`. A folder without a `SKILL.md` is skipped with a notice.
 
@@ -41,7 +41,9 @@ Install the skills, then open Claude Code in the new (or existing) repo and ask 
 - a `CLAUDE.md` with the session workflow, gates and failure-pattern conventions;
 - the doc system (spec, changelog, roadmap, decisions, handoffs, audits) and its contract test, run green;
 - for Supabase projects, a committed `.claude/settings.json` rule denying `supabase db push`;
-- the Claude.ai planning instructions, written to a gitignored local file for you to paste into your Claude.ai Project's custom instructions.
+- the Claude.ai planning instructions, written to a gitignored local file and offered on your clipboard, for you to paste into your Claude.ai Project's custom instructions.
+
+At the end it offers to commit the result and, when the repo has no remote yet, to create the GitHub repo; it pushes only on your yes.
 
 The two source templates are in [`skills/project-bootstrap/templates/`](skills/project-bootstrap/templates/).
 

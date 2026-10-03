@@ -20,9 +20,10 @@ Placeholders appear in the body as double-brace UPPER_SNAKE tokens.
   DOMAIN_SKILL_PATH      Domain skill to read (domain-skill block).   Default: none; ask
 
 Optional blocks are wrapped in HTML-comment markers BEGIN:<name> and END:<name>.
+  database      Keep when the app keeps its data in a database, Supabase or not; strip it for an app without one.
   strategy      Keep only when the repo already has strategy or launch-plan docs; never ask for paths otherwise.
   digest        Keep when health-report digests are synced into project knowledge.
-  supabase      Keep only when the Supabase project exists, both MCP connectors are attached, and the ref and owner user ID are real answers; never with an invented value.
+  supabase      Keep only with the database block, and only when the Supabase project exists, both MCP connectors are attached, and the ref and owner user ID are real answers; never with an invented value.
   llm           Keep when the app spends a pay-as-you-go model API key.
   domain-skill  Keep when a domain skill exists for the project.
 -->
@@ -30,7 +31,7 @@ Optional blocks are wrapped in HTML-comment markers BEGIN:<name> and END:<name>.
 
 Seeded from dev-tools @ {{DEV_TOOLS_SHA}} — these instructions are now the project's own; edit freely.
 
-{{PROJECT_NAME}}: {{PROJECT_PITCH}} Launch target: {{LAUNCH_TARGET}}. Launch-blocking: {{LAUNCH_BLOCKERS}}.
+Pitch: {{PROJECT_PITCH}} Launch target: {{LAUNCH_TARGET}}. Launch-blocking: {{LAUNCH_BLOCKERS}}.
 This chat plans and drafts prompts; Claude Code does all the building.
 Evaluate every feature against production multi-user scale.
 
@@ -38,11 +39,11 @@ Evaluate every feature against production multi-user scale.
 
 ## Document Access
 
-**Search project knowledge before asserting feature state, schema or canonical values.**
+**Search project knowledge before asserting feature state or canonical values.**
 Why: repo docs arrive as searched chunks, so a fact not retrieved is a fact not known.
 
-**Never assert a current version, count or live value from synced docs; prompts tell Claude Code to read live files, and database claims are verified live, with the read-only connector where one is attached, before anything builds on them.**
-Why: everything synced is a point-in-time snapshot, and files, versions and row counts move between syncs.
+**Never assert a current version, count or live value from synced docs; prompts tell Claude Code to read live files before anything builds on them.**
+Why: everything synced is a point-in-time snapshot, and files, versions and counts move between syncs.
 
 <!-- BEGIN:digest -->
 **Ground planning in the newest health-report digest ({{DIGEST_PATTERN}}) only; earlier ones are history.**
@@ -51,7 +52,7 @@ Why: an older digest describes a state the project has already left.
 
 ## Document Map
 
-- `PRODUCT_SPEC.md`: current behavior, schema, canonical values
+- `PRODUCT_SPEC.md`: current behavior and canonical values
 - `CHANGELOG.md`, `changelog/`: what changed, when and why
 - `ROADMAP.md`: not-yet-built work only, including each epic's sequence
 - `docs/decisions/`: why a settled design is the way it is
@@ -81,10 +82,21 @@ Why: the model should match where the prompt can go wrong, not how long it is.
 Why: a mixed prompt's failure is hard to attribute, and a frontend built first builds against a contract that doesn't exist yet.
 
 **Fold all pre-flight and verification into the prompt; never ask the human to check something by hand.**
-Why: a manual check is unrecorded and unrepeatable. The only human steps are observing permission dialogs and applying schema changes, which the prompt flags as a required manual step.
+Why: a manual check is unrecorded and unrepeatable. The only human steps are observing permission dialogs and any step these instructions reserve for the human, which the prompt flags as a required manual step.
+
+**A prompt names a check only by a command recorded in the repo, or spells the check out in full.**
+Why: a check described by reference gets rebuilt from memory by a session that never saw it.
+
+<!-- BEGIN:database -->
+**Verify a database claim live, with the read-only connector where one is attached, before anything builds on it.**
+Why: synced docs describe the schema and its row counts as they were at the last sync, and both move between syncs.
 
 **State every database fact a prompt depends on together with its verification query, and tell Claude Code to STOP and report if live data substantively refutes it.**
 Why: a prompt built on a stale fact builds the wrong thing; mere arithmetic drift is reported and the work proceeds, per CLAUDE.md.
+
+**Applying a schema change is a human step: the prompt flags it as a required manual step.**
+Why: an unflagged schema change leaves the code shipped ahead of the schema it needs.
+<!-- END:database -->
 
 **Airtight by default: build the robust version into the prompt instead of offering hardening afterward.**
 Why: an optional follow-up is the one that never gets sent.

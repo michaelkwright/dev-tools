@@ -33,7 +33,7 @@ Read every template from this checkout: `templates/` next to this file, and `ski
 Read the target and derive every placeholder default from what is there (each template's TEMPLATE NOTES comment lists its placeholders and defaults):
 
 - `package.json`: name, scripts, the test runner, the lockfile's package manager; any `vitest.config.*` or `test` key in `vite.config.*`.
-  - `BUILD_CMD`: the build script. `TYPECHECK_CMD`: the typecheck script, else the `tsc` step the build runs (e.g. `npx tsc -b`). `TEST_CMD`: the test script (`npm test`) when it runs the test runner, else the runner directly.
+  - `BUILD_CMD`: the build script. `TYPECHECK_CMD`: the typecheck script, else the `tsc` step the build runs (e.g. `npx tsc -b`). `TEST_CMD`: the test script (`npm test`) when it runs the test runner, else the runner directly. A script that only prints an error, like npm's default, is no test command.
   - `TZ_TEST_GREP`: the default grep over every directory that holds source or tests.
 - Framework markers (vite, react, phaser): a DOM framework means the report points to the vitest-suite-speed skill for the test-environment split.
 - `supabase/` suggests the database and supabase blocks; `supabase/.temp/project-ref` holds a linked ref, which also means the Supabase project exists.
@@ -56,9 +56,9 @@ Why: a question the user cannot parse gets a guessed answer, and a guess written
 |---|---|---|
 | "What's the project called?" (suggest the `package.json` name, else the directory name) | `PROJECT_NAME` | always |
 | "In one sentence, what does it do, and for whom?" | `PROJECT_PITCH`, and `PRODUCT_SUMMARY` unless they give a longer one; fill it as a sentence ending in a full stop, since the template runs straight on | always |
-| "What will count as launched, and by when?" | `LAUNCH_TARGET`, without a closing full stop (the template adds one) | always |
+| "What will count as launched, and by when?" | `LAUNCH_TARGET`, without a closing full stop (the template adds one), with a relative date made absolute (below) | always |
 | "What must be true before launch? (For example: no user can ever see another user's data.)" | `LAUNCH_BLOCKERS`, without a closing full stop | always |
-| "Will the app keep its data in a database?" | `database` block | always; suggest yes when `supabase/` exists |
+| "Will the app keep its data in a database?" | `database` block (both templates) | always; suggest yes when `supabase/` exists |
 | "Will that database be Supabase?" | `supabase` block (both templates) | the answer above is yes |
 | "Have you created the Supabase project yet?" | the no-backend path below | Supabase, and no linked ref was found |
 | "What's the project's ID? It's the short code after `/project/` in the Supabase dashboard's address." | `SUPABASE_PROJECT_REF` | the project exists and no linked ref was found |
@@ -69,16 +69,27 @@ Why: a question the user cannot parse gets a guessed answer, and a guess written
 | "Do you keep dated status reports that you add to the Claude.ai Project? If so, where, and how are they named?" | `digest` block, `DIGEST_PATTERN` | always; most new projects say no |
 | "Is there a Claude Code skill holding facts about this project's subject, for the planning chat to read? If so, where?" | `domain-skill` block, `DOMAIN_SKILL_PATH` | always; most new projects say no |
 | "Your timezone looks like `<detected>`. Is that right?" | `LOCAL_TZ`; `SECOND_TZ` is Asia/Tokyo, or America/New_York when local is within three hours of Tokyo | always |
-| "There's no `<build / typecheck / test>` command yet. Add one now, or leave it for later?" | `BUILD_CMD`, `TYPECHECK_CMD`, `TEST_CMD`; "later" keeps the template default, listed in the report as not yet existing | per missing command |
+| "There's no test command yet, and the doc check this setup installs runs on vitest, a test runner. Add vitest now and make it the test command (`npm test`), or add vitest for the doc check only and set up the test command later?" | the vitest install and `test` script (step 5b); `TEST_CMD` is `npm test`, or on "later" the not-set-up line (below) | no test command was found |
+| "The doc check this setup installs runs on vitest, a test runner, and it isn't installed. Add it now?" | the vitest install (step 5b) | a test command exists but vitest does not |
+| "There's no `<build / typecheck>` command yet. Add one now, or leave it for later?" | `BUILD_CMD`, `TYPECHECK_CMD`; "later" writes the not-set-up line (below) | per missing command |
 | "Will the repo be public (anyone can read it) or private?" | visibility | detection could not tell |
 | "What's the smallest first piece you want to build?" | the first `ROADMAP.md` epic (step 5b) | always; "not sure yet" is a fine answer |
 | "Save these setup files as a commit when done? (Recommended: yes.)" When step 2 found uncommitted files already there, list them and ask whether the commit includes them too. | step 5f commit | always |
 | "Create a `<visibility>` GitHub repo named `<name>`, and upload this commit to it?" (`<name>`: the project name, lowercased, spaces as dashes; the user may change it) | step 5f remote and push | `git remote` lists none, and the commit answer is yes |
 
-The `database` block is in `CLAUDE.md` only, `supabase` in both templates, `scheduled-ci` in `CLAUDE.md` only, and `strategy`, `digest`, `llm` and `domain-skill` in the instructions only.
+The `database` and `supabase` blocks are in both templates, `scheduled-ci` in `CLAUDE.md` only, and `strategy`, `digest`, `llm` and `domain-skill` in the instructions only.
 
 **Never write an invented value: a placeholder the user has not answered and detection has not found is stripped with its block, or written as the environment variable below, never filled with a made-up stand-in.**
 Why: a stand-in passes every placeholder check and reads as fact, so later sessions build on an ID that does not exist.
+
+**Declining vitest stops the bootstrap before anything is written.**
+Why: the doc check runs on it, and a bootstrap that cannot run its own check cannot say its docs are in shape.
+
+**A command answered "later" replaces its whole code span, backticks and any `TZ=` prefix included, with the plain text `NOT SET UP YET: <what to add>`, never a runnable default; the report lists each one.**
+Why: a default command in `CLAUDE.md` reads as working, so a session runs it and builds on its failure.
+
+**Turn a relative date in any answer ("end of next quarter", "in six weeks") into an absolute date, `Month D, YYYY`, counted from today, and confirm it with the user before writing it.**
+Why: a relative date is true only on the day it was said, and every later session reads it against its own today.
 
 **No backend yet: when the database is Supabase but the project does not exist, ask nothing more about it. Keep `CLAUDE.md`'s supabase block (with `$SUPABASE_PROJECT_REF` as below) and the step-5c deny rule; strip the instructions' supabase block.**
 Why: the build rules and the deny rule apply from the first migration, while the planning chat's Supabase rules name a project and connections that do not exist yet. The report says "regenerate the Claude.ai instructions after the backend exists".
@@ -97,18 +108,23 @@ Why: the project's existing notes and settings are its own, and a bootstrap that
 - Existing docs: the doc-system ADOPT mapping, including the `CONFIG` fit, is part of this proposal, since step 5a needs its values.
 - Existing JSON: merged key by key; arrays are unioned; the result must parse.
 - Existing `.gitignore`: the merge only appends lines and changes none, and it is shown and approved like any other. It holds the step-5d line, plus `node_modules/` and the build output folder when a commit is wanted and they are missing.
-- `package.json` and the lockfile change only through an approved dependency install.
+- `package.json` and the lockfile change only through an approved dependency install, or the `test` script the step-3 test answer approved.
 
 ## 5. Write, in this order
 
+**ADOPT only, before any other write: install the contract test with its approved `CONFIG` (5b's path, and vitest per step 3), then run its template-token check alone, `npx vitest run <test path> -t "template token"`, in the foreground and unpiped. Every token it reports was already there: list each for the user and offer a `CONFIG.templateTokens.allow` entry for it (file, token, and a reason the user gives), never an edit to their text.**
+Why: a token the project wrote is the project's to fix or keep, and one bootstrap cleared silently could be a value someone meant to fill.
+
+A "not found" failure in that run means only a file 5b seeds next. A token whose allowance the user declines keeps 5e red, and the report names it as theirs to fix.
+
 **a. `CLAUDE.md`** from `templates/CLAUDE.md.tmpl`:
-- Fill every placeholder. `DOC_CONTRACT_CMD` is `npx vitest run <test path>`. `DOC_CONTRACT_LIMITS` is doc-system's `reference/limits.md` below its rule, filled from the test's `CONFIG` as step 5b will leave it. After an ADOPT fit, also rewrite numbered items 7 and 11 of the limits list to the fitted heading and date shape; the test checks only the numeric phrases.
-- Keep or strip each optional block; delete the `BEGIN:`/`END:` marker lines of kept blocks, and stripped blocks entirely.
+- Fill every placeholder. `DOC_CONTRACT_CMD` is `npx vitest run <test path>`. `DOC_CONTRACT_LIMITS` is doc-system's `reference/limits.md` below its rule, filled from the test's `CONFIG` as step 5b will leave it and from `DOC_CONTRACT_CMD`. After an ADOPT fit, also rewrite numbered items 7 and 11 of the limits list to the fitted heading and date shape; the test checks only the numeric phrases.
+- Keep or strip each optional block; delete the `BEGIN:`/`END:` marker lines of kept blocks, and stripped blocks entirely. Then, outside code fences, collapse every run of blank lines to one, and every two `---` rules with only blank lines between them to one. Old content an ADOPT keeps verbatim is left as it is.
 - Keep the `doc-contract-limits:start`/`end` markers. Delete the TEMPLATE NOTES comment.
 - Fail if any `{{` remains outside a code fence, any template placeholder remains anywhere, or any stand-in value appears (checks below).
 
 **b. Docs and the contract test** by following doc-system's `SKILL.md` in the step-2 mode, including its break-and-restore proof, with the step-2 test path and `CONFIG.root` set to reach the repo root from it. Fill `{{DEV_TOOLS_SHA}}` in the test's header comment too. The test stays TypeScript even in a JavaScript repo; vitest runs it without a tsconfig.
-- If vitest is absent, ask before adding it as a dev dependency with the repo's package manager (the latest version compatible with the repo's vite, if any).
+- If vitest is absent, add it as a dev dependency with the repo's package manager, as the step-3 answer approved (the latest version compatible with the repo's vite, if any), and the `test` script `vitest run` only if that answer chose it.
 - When step 2 found a DOM framework, point to the vitest-suite-speed skill for the test-environment split; do not set it up here.
 - When the user named a first piece to build, replace `ROADMAP.md`'s example epic with it, in the same shape: an `##` heading naming it, one line on what it does, and a `### Sequence` of numbered steps (one step is fine). Drop the example's decision-record sentence and its Deferred item, leaving `- Nothing yet.` under Deferred. Otherwise keep the example, and the report says to replace it.
 - ADOPT specifics:
@@ -128,19 +144,20 @@ Without that block there is nothing to add; create no file.
 
 **d. The Claude.ai instructions**: fill `templates/claude-ai-project-instructions.md.tmpl` the same way (placeholders, blocks, marker lines, TEMPLATE NOTES, the checks below). Write it to `.claude/project-instructions.local.md`, which is never committed and so may hold the real ref and IDs, and add that exact path to `.gitignore`.
 
-Then ask "Copy the Claude.ai instructions to your clipboard now?". On a yes, copy the file with the platform's clipboard command and read its exit code: macOS `pbcopy < <file>`; Windows `clip < <file>`; Linux `wl-copy < <file>`, else `xclip -selection clipboard < <file>`, else `xsel --clipboard < <file>`. If no clipboard tool exists, say so and print the file's contents in the session instead.
+Then ask "Copy the Claude.ai instructions to your clipboard now?". On a yes, copy the file with the platform's clipboard command and read its exit code: macOS `pbcopy < <file>`; Windows, in PowerShell, `Get-Content -Raw -Encoding utf8 <file> | Set-Clipboard` (`clip` garbles non-ASCII text, and this command is untested on Windows); Linux `wl-copy < <file>`, else `xclip -selection clipboard < <file>`, else `xsel --clipboard < <file>`. If no clipboard tool exists, say so and print the file's contents in the session instead.
 
 **The instructions file stays at `.claude/project-instructions.local.md`, and its contents never go into any committed file.**
 Why: it may hold the real ref and IDs, and `.claude/` is a hidden folder, so the copy command in the report is how the user gets at it again.
 
 **e. Run the scoped doc-contract command** (`DOC_CONTRACT_CMD`) in the foreground, unpiped, and read its exit code. It must be green. If the repo has a build script, run it once too: the bootstrap is not done if the new files broke it.
 
-Checks, over every Markdown file written or merged (and the test file where named):
+Checks, over every Markdown file written or merged (and the test file where named). They run once, and are broader than the doc-contract test's template-token check, which holds the recorded half: on every doc-contract run it fails any unfilled `UPPER_SNAKE_CASE` token in the docs and `CLAUDE.md`, but never sees the instructions file, a lowercase or partial `{{`, or a stand-in.
 
 ```bash
 awk 'FNR==1{f=0} /^[ \t]*```/{f=!f; next} !f && /\{\{/{print FILENAME":"FNR": "$0; bad=1} END{exit bad}' <files>
 grep -nE '\{\{[A-Z_]+\}\}' <files> <test file>    # must print nothing
 grep -niE 'your[-_ ]?(project|ref|user|owner|id|connector)|placeholder|changeme|xxxx|lorem|dummy' <files>    # must print nothing
+awk 'FNR==1{f=0;b=0;r=0} /^[ \t]*```/{f=!f} f{next} /^[ \t]*$/{if(++b>1){print FILENAME":"FNR": blank-line run"; bad=1}; next} {b=0} /^---[ \t]*$/{if(r){print FILENAME":"FNR": doubled ---"; bad=1}; r=1; next} {r=0} END{exit bad}' <files>    # layout
 ```
 
 Before writing a Supabase value, check its shape, and treat a mismatch as unanswered:
@@ -173,7 +190,8 @@ Create it in the same registration: the gate stops with exit 2 when `vocab.d/` h
 
 - Files created, and files merged (with what was kept); everything but `.claude/project-instructions.local.md` is meant to be committed.
 - Optional blocks kept and stripped, the test path and command, and any `CLAUDE.md` note flagged as contradicting a template rule.
+- Checks: one line for each check this run made, ending `recorded: <the command as CLAUDE.md records it>` when the repo can rerun it, else `bootstrap only`. The doc-contract test is recorded as `DOC_CONTRACT_CMD`, its template-token check as `DOC_CONTRACT_CMD -t "template token"`, and the build as `BUILD_CMD`. The source pin, the break-and-restore proof, the step-5e `{{`, placeholder, stand-in and layout checks, the Supabase shape checks and the staging check are bootstrap only; an ADOPT's pre-run is the template-token check, so it is recorded.
 - The commit made (its short SHA) or not, and the remote created and pushed or not.
-- Copying the instructions again: the one-line command for this platform with the file's full path (macOS `pbcopy < <path>`; Windows PowerShell `Get-Content -Raw -Encoding utf8 <path> | Set-Clipboard`; Linux the first of step 5d's three tools that `command -v` finds, even when the user said no there), and where to paste: the Claude.ai Project's custom instructions.
-- Left for the user: paste the instructions as above, then start a fresh planning chat; apply any schema steps by hand; any command that does not exist yet; replace the example epic in `ROADMAP.md`, if it was kept; after an ADOPT, describe the existing features in the spec; "regenerate the Claude.ai instructions after the backend exists", if there was none; push, if a remote existed.
+- Copying the instructions again: the one-line command for this platform with the file's full path (macOS `pbcopy < <path>`; Windows PowerShell `Get-Content -Raw -Encoding utf8 <path> | Set-Clipboard`, untested on Windows; Linux the first of step 5d's three tools that `command -v` finds, even when the user said no there), and where to paste: the Claude.ai Project's custom instructions.
+- Left for the user: paste the instructions as above, then start a fresh planning chat; apply any schema steps by hand; each command written as `NOT SET UP YET`, with what to add; replace the example epic in `ROADMAP.md`, if it was kept; after an ADOPT, describe the existing features in the spec; "regenerate the Claude.ai instructions after the backend exists", if there was none; push, if a remote existed.
 - CI templates are not yet part of this skill.

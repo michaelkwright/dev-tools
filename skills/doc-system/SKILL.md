@@ -26,7 +26,7 @@ Five kinds of document, each answering one question, held to shape by a vitest c
 3. Propose a mapping to the user and wait for approval: each existing file → the role it takes, each gap → the template that fills it, each format conflict → the `CONFIG` change that fits the test to the repo.
 4. Seed only what is missing. Fit the test to the repo through `CONFIG` (paths, heading shape, date format), never the repo to the test.
 5. Leave out of the contract any changelog a release tool writes; hand edits there get overwritten.
-6. Declare historical irregularities in `CONFIG` with a reason each, rather than editing history. Splitting an over-window changelog into archives is its own commit: entries move verbatim, reordered oldest-first, into sealed archives of exactly the seal size, and the remainder goes into one open archive.
+6. Declare historical irregularities in `CONFIG` with a reason each, rather than editing history; a template token the repo already kept on purpose gets a `CONFIG.templateTokens.allow` entry the same way. Splitting an over-window changelog into archives is its own commit: entries move verbatim, reordered oldest-first, into sealed archives of exactly the seal size, and the remainder goes into one open archive.
 7. Raise the `CONFIG.floors` to the adopted corpus's real size so a broken parse cannot pass.
 
 ## Installing the contract test
@@ -37,7 +37,8 @@ Five kinds of document, each answering one question, held to shape by a vitest c
 - In the project's `CLAUDE.md` (from the project-bootstrap template, or added to an existing one):
   - `{{DOC_CONTRACT_CMD}}`: the command above.
   - `{{CHANGELOG_WINDOW}}`: `CONFIG.limits.changelogWindow`.
-  - `{{DOC_CONTRACT_LIMITS}}`: the list from `reference/limits.md` with `CONFIG`'s values filled in, between the `<!-- doc-contract-limits:start -->` and `<!-- doc-contract-limits:end -->` markers. The test fails when the block and `CONFIG` disagree, so change a limit in both places at once.
+  - `{{DOC_CONTRACT_LIMITS}}`: the list from `reference/limits.md` with `CONFIG`'s values and the command above filled in, between the `<!-- doc-contract-limits:start -->` and `<!-- doc-contract-limits:end -->` markers. The test fails when the block and `CONFIG` disagree, so change a limit in both places at once.
+- The template-token check fails any double-brace `UPPER_SNAKE_CASE` token left outside code in the files `CONFIG.templateTokens.files` lists, by file and line. Fit that list to the repo's doc paths along with `CONFIG.paths`. Run the check alone with the command above plus `-t "template token"`.
 - Prove it before trusting it: break one file (a Feature Index cell over the cap, say), watch the scoped run fail, restore from a copy and confirm with `diff`.
 
 ## Rules
@@ -81,4 +82,5 @@ Why: the chain stays readable as history without competing with the current snap
 
 - `templates/`: the seed set. `PRODUCT_SPEC.md`, `CHANGELOG.md` (one seed entry, v0.1), `changelog/v0.1-onward.md` (the empty open archive the seed entry will first roll into), `ROADMAP.md`, `docs/decisions/TEMPLATE.md`, `docs/handoffs/TEMPLATE.md`, `docs/audits/README.md`.
 - `reference/doc-contracts.test.ts`: the contract test. Every project-shaped value is in its exported `CONFIG`; read that block before changing anything.
+- `reference/test/`: this skill's harness, which runs the contract test against a seeded fixture.
 - `reference/limits.md`: the canonical limits list pasted into `CLAUDE.md`.

@@ -89,7 +89,7 @@ Paste the drafted prompt into Claude Code, started in your project folder. It as
 - If you need them again later, the file is `.claude/project-instructions.local.md` inside your project. Folders whose names start with a dot are hidden.
 - To copy it again, run the line for your system from the project folder:
   - macOS: `pbcopy < .claude/project-instructions.local.md`
-  - Windows (PowerShell): `Get-Content -Raw -Encoding utf8 .claude\project-instructions.local.md | Set-Clipboard`
+  - Windows (PowerShell): `Get-Content -Raw -Encoding utf8 .claude\project-instructions.local.md | Set-Clipboard`. This command has not been tested on Windows; if it fails, use the text-editor route below.
   - Linux: `wl-copy < .claude/project-instructions.local.md`, or on older desktops `xclip -selection clipboard < .claude/project-instructions.local.md`
   - If none of these works (inside WSL, say), open the file in any text editor and copy it from there.
 - To see hidden folders: in macOS Finder, press **Cmd+Shift+Period** (press it again to hide them). In Windows File Explorer there is no shortcut: choose **View > Show > Hidden items** ([Microsoft's guide](https://support.microsoft.com/en-us/windows/experience/fileexplorer/file-explorer-in-windows)).
@@ -110,7 +110,7 @@ Paste the drafted prompt into Claude Code, started in your project folder. It as
 - **Public vs private**: anyone on the internet can read a public repo, forever, including its history; only people you invite can read a private one.
 - **Remote**: the copy of your repo on GitHub. **Push** uploads your commits to it.
 - **Scheduled CI**: checks GitHub runs on a timer (nightly, say) as a backstop. Your project's `CLAUDE.md` mentions it only if the repo has such a workflow.
-- **Doc contract**: a test that checks your project docs keep their shape (the changelog's entries, the spec's index). Claude Code runs it after every change to the docs.
+- **Doc contract**: a test that checks your project docs keep their shape (the changelog's entries, the spec's index) and that no template blank was left unfilled. Claude Code runs it after every change to the docs.
 - **Gate**: a check that must pass before work moves on, such as the build or the tests.
 
 For Supabase users:

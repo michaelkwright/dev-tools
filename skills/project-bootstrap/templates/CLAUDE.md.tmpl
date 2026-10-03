@@ -9,14 +9,14 @@ Placeholders appear in the body as double-brace UPPER_SNAKE tokens.
   TYPECHECK_CMD         Standalone typecheck, mid-iteration only.   Default: npm run typecheck
   TEST_CMD              Full test suite.                            Default: npx vitest run
   SCOPED_TEST_CMD       One test file.                              Default: npx vitest run <file>
-  TEST_RUNNER_PROC      Process name for the leftover-run check.    Default: vitest
+  TEST_RUNNER_PROC      Runner name the leftover-run check matches under this repo's own node_modules. Default: vitest
   DOC_CONTRACT_CMD      Scoped run of the doc-contract test file.   Default: npx vitest run src/test/doc-contracts.test.ts (doc-system skill)
   CHANGELOG_WINDOW      Entries kept in CHANGELOG.md before rolling. Default: 50
   LOCAL_TZ              Timezone the suite runs under locally.      Default: America/New_York
   SECOND_TZ             Opposite-side timezone for date-logic runs. Default: Asia/Tokyo
   TZ_TEST_GREP          Command listing timezone-sensitive tests.   Default: grep -rlE "process\.env\.TZ|setSystemTime|useFakeTimers|toFake|Intl\.DateTimeFormat" src/
   SCHEDULED_CI_CMD      Latest scheduled CI runs (scheduled-ci).    Default: gh run list --workflow <detected workflow file> --limit 3
-  DOC_CONTRACT_LIMITS   The doc-contract limits list.               Default: doc-system skill's reference/limits.md, filled from the test's CONFIG; the doc-contract-limits:start/end markers around it stay (they are not optional-block markers)
+  DOC_CONTRACT_LIMITS   The doc-contract limits list.               Default: doc-system skill's reference/limits.md, filled from the test's CONFIG and DOC_CONTRACT_CMD; the doc-contract-limits:start/end markers around it stay (they are not optional-block markers)
   SUPABASE_PROJECT_REF  Supabase project ref (supabase block only). Default: $SUPABASE_PROJECT_REF if public or no project yet; else ask
 
 Optional blocks are wrapped in HTML-comment markers BEGIN:<name> and END:<name>.
@@ -126,8 +126,11 @@ Why: a second typecheck in the gate is a repeat, not a second check.
 **Run the full suite (`TZ={{LOCAL_TZ}} {{TEST_CMD}}`) in the foreground as its own command, never backgrounded behind a polling loop.**
 Why: a foreground run yields the exit code directly, while polling adds no information and leaves it unclear whether the gate settled.
 
-**Check for leftover test-runner processes (`pgrep -fl {{TEST_RUNNER_PROC}}`) before every test launch, scoped or full.**
+**Before every test launch, scoped or full, check for leftover test-runner processes started from this repo: `root="$(git rev-parse --show-toplevel)" && pgrep -fl "$(printf '%s' "$root" | sed 's/[][\.*^$+?(){}|]/\\&/g')/node_modules/.*{{TEST_RUNNER_PROC}}"`. It lists only processes run from this repo's own `node_modules`, and exits 1 when there are none.**
 Why: a run stacked on a previous run's live workers contends for the same cores and looks exactly like a hang.
+
+**Wait for or stop only a process that check lists; never stop or wait on one it does not.**
+Why: a match by runner name alone also catches another project's run, which is not this session's to stop or wait on.
 
 **Session order: implement → scoped runs (`{{SCOPED_TEST_CMD}}`) → break probes observed failing on scoped runs → restore by copy and confirm with `diff` → spec-update protocol → scoped doc contracts → one `{{BUILD_CMD}}` → one full suite on the final bytes.**
 Why: the single full run on the committed bytes proves everything an earlier full run would, at a fraction of the cost.

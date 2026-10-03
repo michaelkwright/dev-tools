@@ -1,5 +1,6 @@
 // Doc-contract test: enforces the shape of CHANGELOG.md, changelog/,
-// PRODUCT_SPEC.md and the limits block in CLAUDE.md. Node environment, no DOM.
+// PRODUCT_SPEC.md and the limits block in CLAUDE.md, and that no listed doc
+// keeps an unfilled template token. Node environment, no DOM.
 // Seeded from dev-tools @ {{DEV_TOOLS_SHA}}; this file is now the project's own.
 //
 // Every project-shaped value lives in CONFIG below. Change CONFIG, not the
@@ -12,6 +13,7 @@ import { fileURLToPath } from "node:url";
 
 type HeadingException = { file: string; heading: string; reason: string };
 type PartitionException = { file: string; version: string; reason: string };
+type TokenAllowance = { file: string; token: string; reason: string };
 
 export const CONFIG = {
   // Repo root, relative to this file. The default assumes src/test/.
@@ -68,6 +70,16 @@ export const CONFIG = {
   // file is repo-relative, e.g. "changelog/v0.1-to-v0.50.md".
   nonConformingHeadings: [] as HeadingException[], // heading: text after the marker
   partitionExceptions: [] as PartitionException[], // version: e.g. "v1.4"
+
+  // The template-token check: no double-brace UPPER_SNAKE_CASE token outside
+  // fenced code blocks and inline code spans in these files. A path ending in
+  // "/" means every .md file directly in that directory. Run it alone with
+  // -t "template token". An allowance names its file and the whole token,
+  // braces included, and carries a reason, like the exceptions above.
+  templateTokens: {
+    files: ["CLAUDE.md", "PRODUCT_SPEC.md", "ROADMAP.md", "CHANGELOG.md", "changelog/"],
+    allow: [] as TokenAllowance[],
+  },
 };
 
 // ─── derived patterns ───────────────────────────────────────────────────────
@@ -159,6 +171,12 @@ function corpusFiles(): CorpusFile[] {
     { label: P.changelog, lines: read(P.changelog).split("\n"), descending: true },
     ...archives.filter((a) => !isFreshEmptyOpenArchive(a)),
   ];
+}
+
+// Read lazily, so a run filtered with -t to one block never parses the others.
+function lazy<T>(make: () => T): () => T {
+  let value: T | undefined;
+  return () => (value ??= make());
 }
 
 const entriesIn = (rel: string) => headingsIn({ label: rel, lines: read(rel).split("\n"), descending: false });
@@ -293,23 +311,23 @@ describe("PRODUCT_SPEC.md", () => {
 // ─── changelog corpus structure ─────────────────────────────────────────────
 
 describe("changelog corpus structure", () => {
-  const files = corpusFiles();
-  const all = files.flatMap(headingsIn);
-  const versioned = files.flatMap(versionedIn);
+  const files = lazy(corpusFiles);
+  const all = lazy(() => files().flatMap(headingsIn));
+  const versioned = lazy(() => files().flatMap(versionedIn));
 
   it("parses a corpus large enough for the assertions to mean anything", () => {
     // Every check below is filter-and-expect-empty, which passes on an empty parse.
-    expect(files.length, `Enumerated ${files.length} changelog files.`).toBeGreaterThanOrEqual(
+    expect(files().length, `Enumerated ${files().length} changelog files.`).toBeGreaterThanOrEqual(
       CONFIG.floors.corpusFiles,
     );
     expect(
-      all.length,
-      `Parsed ${all.length} entry headings, below the floor of ${CONFIG.floors.entryHeadings}. ` +
+      all().length,
+      `Parsed ${all().length} entry headings, below the floor of ${CONFIG.floors.entryHeadings}. ` +
         `Check that entries still start with "${H.marker}".`,
     ).toBeGreaterThanOrEqual(CONFIG.floors.entryHeadings);
     expect(
-      versioned.length,
-      `Parsed ${versioned.length} versioned headings, below the floor of ${CONFIG.floors.entryHeadings}.`,
+      versioned().length,
+      `Parsed ${versioned().length} versioned headings, below the floor of ${CONFIG.floors.entryHeadings}.`,
     ).toBeGreaterThanOrEqual(CONFIG.floors.entryHeadings);
   });
 
@@ -321,7 +339,7 @@ describe("changelog corpus structure", () => {
   });
 
   it("every entry heading conforms, or is declared by name", () => {
-    const bad = all
+    const bad = all()
       .filter((h) => !CONFORMING_RE.test(h.text) && !isDeclaredNonConforming(h.file, h.text))
       .map((h) => `  ${at(h)}  ${h.text.slice(0, 120)}`);
     expect(
@@ -335,7 +353,7 @@ describe("changelog corpus structure", () => {
 
   it("every declared non-conforming heading still exists exactly once, in its file", () => {
     const stale = CONFIG.nonConformingHeadings
-      .filter((e) => all.filter((h) => h.file === e.file && h.text.slice(H.marker.length).trim() === e.heading).length !== 1)
+      .filter((e) => all().filter((h) => h.file === e.file && h.text.slice(H.marker.length).trim() === e.heading).length !== 1)
       .map((e) => `  ${e.file}  ${e.heading}`);
     expect(
       stale,
@@ -347,7 +365,7 @@ describe("changelog corpus structure", () => {
 
   it("no two entries share a version", () => {
     const byVersion = new Map<string, Versioned[]>();
-    for (const v of versioned) byVersion.set(v.version, [...(byVersion.get(v.version) ?? []), v]);
+    for (const v of versioned()) byVersion.set(v.version, [...(byVersion.get(v.version) ?? []), v]);
     const dup = [...byVersion.entries()]
       .filter(([, vs]) => vs.length > 1)
       .map(([ver, vs]) => `  ${ver} appears at ${vs.map(at).join(" and ")}`);
@@ -360,7 +378,7 @@ describe("changelog corpus structure", () => {
 
   it("versions are contiguous in their last component across the corpus", () => {
     const groups = new Map<string, Versioned[]>();
-    for (const v of versioned) {
+    for (const v of versioned()) {
       const key = v.tuple.slice(0, -1).join(".");
       groups.set(key, [...(groups.get(key) ?? []), v]);
     }
@@ -386,7 +404,7 @@ describe("changelog corpus structure", () => {
 
   it("entries are strictly ordered within every file", () => {
     const bad: string[] = [];
-    for (const file of files) {
+    for (const file of files()) {
       const vs = versionedIn(file);
       for (let i = 1; i < vs.length; i++) {
         const d = compareTuples(vs[i].tuple, vs[i - 1].tuple);
@@ -407,7 +425,7 @@ describe("changelog corpus structure", () => {
 
   it("no body line ends with a heading-style date parenthetical", () => {
     const merged: string[] = [];
-    for (const file of files)
+    for (const file of files())
       file.lines.forEach((text, i) => {
         if (!ENTRY_RE.test(text) && DATE_TAIL_RE.test(text))
           merged.push(`  ${file.label}:${i + 1}  ${text.slice(0, 160)}`);
@@ -422,7 +440,7 @@ describe("changelog corpus structure", () => {
 
   it("every entry heading is followed by a non-empty body", () => {
     const empty: string[] = [];
-    for (const file of files)
+    for (const file of files())
       file.lines.forEach((text, i) => {
         if (!ENTRY_RE.test(text)) return;
         let j = i + 1;
@@ -439,7 +457,7 @@ describe("changelog corpus structure", () => {
 
   it(`at most ${L.preambleMaxLines} preamble lines, none body-shaped, precede a file's first entry`, () => {
     const bad: string[] = [];
-    for (const file of files) {
+    for (const file of files()) {
       const first = file.lines.findIndex((l) => ENTRY_RE.test(l));
       if (first === -1) {
         bad.push(`  ${file.label}: contains no entry headings`);
@@ -503,15 +521,15 @@ const isPartitionException = (file: string, version: string) =>
   CONFIG.partitionExceptions.some((e) => e.file === file && e.version === version);
 
 describe("changelog chain partition", () => {
-  const files = corpusFiles();
+  const files = lazy(corpusFiles);
 
   it("every file's newest entry sorts below the next file's oldest", () => {
-    const chain = chainSpans(files, isPartitionException);
+    const chain = chainSpans(files(), isPartitionException);
     expect(
       chain.length,
-      `Derived a ${chain.length}-file chain from ${files.length} corpus files. Every changelog ` +
+      `Derived a ${chain.length}-file chain from ${files().length} corpus files. Every changelog ` +
         `file must contribute at least one versioned heading, or it drops out of this check.`,
-    ).toBe(files.length);
+    ).toBe(files().length);
 
     const violations = partitionViolations(chain);
     expect(
@@ -524,7 +542,7 @@ describe("changelog chain partition", () => {
 
   it("every declared partition exception is real and load-bearing", () => {
     for (const e of CONFIG.partitionExceptions) {
-      const found = files.flatMap((f) =>
+      const found = files().flatMap((f) =>
         versionedIn(f)
           .filter((h) => h.version === e.version)
           .map((h) => f.label),
@@ -536,7 +554,7 @@ describe("changelog chain partition", () => {
       ).toEqual([e.file]);
 
       const without = partitionViolations(
-        chainSpans(files, (file, version) => isPartitionException(file, version) && !(file === e.file && version === e.version)),
+        chainSpans(files(), (file, version) => isPartitionException(file, version) && !(file === e.file && version === e.version)),
       );
       expect(
         without.length,
@@ -592,6 +610,96 @@ describe("CLAUDE.md limits block", () => {
       problems,
       `The ${P.claudeMd} limits block disagrees with CONFIG:\n${problems.join("\n")}\n\nRegenerate ` +
         `the block from the doc-system skill's reference/limits.md with CONFIG's values.`,
+    ).toEqual([]);
+  });
+});
+
+// ─── template tokens ────────────────────────────────────────────────────────
+//
+// A seeded doc that keeps a template token reads as finished while a value is
+// missing. Code is exempt, since a fence or an inline span may show a token on
+// purpose. Code spans are matched within one line.
+
+const TOKEN_RE = /\{\{[A-Z][A-Z0-9]*(?:_[A-Z0-9]+)*\}\}/g;
+const FENCE_RE = /^ {0,3}(`{3,}|~{3,})/;
+const CODE_SPAN_RE = /(?<!`)(`+)(?!`)[\s\S]*?(?<!`)\1(?!`)/g;
+const T = CONFIG.templateTokens;
+
+type TokenHit = { file: string; line: number; token: string };
+
+function tokenFiles(): { listed: string; files: string[] }[] {
+  return T.files.map((listed) => {
+    if (!listed.endsWith("/")) return { listed, files: existsSync(abs(listed)) ? [listed] : [] };
+    if (!existsSync(abs(listed))) return { listed, files: [] };
+    const dir = listed.slice(0, -1);
+    return { listed, files: readdirSync(abs(dir)).filter((f) => f.endsWith(".md")).sort().map((f) => `${dir}/${f}`) };
+  });
+}
+
+function tokenHitsIn(file: string): TokenHit[] {
+  const hits: TokenHit[] = [];
+  let fence: string | null = null;
+  read(file)
+    .split("\n")
+    .forEach((text, i) => {
+      const m = text.match(FENCE_RE);
+      if (fence) {
+        if (m && m[1][0] === fence[0] && m[1].length >= fence.length && text.trim() === m[1]) fence = null;
+        return;
+      }
+      if (m) {
+        fence = m[1];
+        return;
+      }
+      for (const token of text.replace(CODE_SPAN_RE, " ").match(TOKEN_RE) ?? [])
+        hits.push({ file, line: i + 1, token });
+    });
+  return hits;
+}
+
+const isAllowedToken = (h: TokenHit) => T.allow.some((a) => a.file === h.file && a.token === h.token);
+
+describe("template tokens", () => {
+  const hits = lazy(() => tokenFiles().flatMap((t) => t.files.flatMap(tokenHitsIn)));
+
+  it("every file listed for the template token check exists", () => {
+    const missing = tokenFiles()
+      .filter((t) => t.files.length === 0)
+      .map((t) => `  ${t.listed}`);
+    expect(
+      missing,
+      `Listed in CONFIG.templateTokens.files but not found (or, for a directory, holding no .md ` +
+        `file):\n${missing.join("\n")}\n\nA listed path that matches nothing is checked by nothing. ` +
+        `Fix the path, or remove it if the doc no longer exists.`,
+    ).toEqual([]);
+  });
+
+  it("no doc keeps an unfilled template token outside code", () => {
+    const bad = hits()
+      .filter((h) => !isAllowedToken(h))
+      .map((h) => `  ${h.file}:${h.line}  ${h.token}`);
+    expect(
+      bad,
+      `${bad.length} unfilled template token(s) outside code:\n${bad.join("\n")}\n\nFill each one ` +
+        `with its real value. If the text is meant to show the token, put it in inline code or a ` +
+        `fence; if the project keeps it on purpose, add a CONFIG.templateTokens.allow entry with ` +
+        `its file, the token and a reason.`,
+    ).toEqual([]);
+  });
+
+  it("every allowed template token carries a reason", () => {
+    const missing = T.allow.filter((a) => !a.reason || a.reason.trim() === "").map((a) => `  ${JSON.stringify(a)}`);
+    expect(missing, `Template token allowance(s) without a reason:\n${missing.join("\n")}`).toEqual([]);
+  });
+
+  it("every allowed template token is still present in its file", () => {
+    const stale = T.allow
+      .filter((a) => !hits().some((h) => h.file === a.file && h.token === a.token))
+      .map((a) => `  ${a.file}  ${a.token}`);
+    expect(
+      stale,
+      `Template token allowance(s) matching nothing outside code:\n${stale.join("\n")}\n\nA stale ` +
+        `allowance widens the rule for nothing; delete it.`,
     ).toEqual([]);
   });
 });

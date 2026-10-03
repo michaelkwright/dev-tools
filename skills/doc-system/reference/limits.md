@@ -1,6 +1,6 @@
 # Doc-contract limits
 
-The canonical limits list. Fill each placeholder from the test's `CONFIG.limits` (`{{CHANGELOG_WINDOW}}` = `changelogWindow`, `{{SEAL_SIZE}}` = `sealSize`, `{{INDEX_CELL_MAX}}` = `indexCellMax`, `{{PREAMBLE_MAX_LINES}}` = `preambleMaxLines`), then paste everything below the rule between the `doc-contract-limits:start` and `doc-contract-limits:end` markers in the project's `CLAUDE.md`. The test matches the wording of the numbered lines, so edit numbers, not phrasing.
+The canonical limits list. Fill each placeholder from the test's `CONFIG.limits` (`{{CHANGELOG_WINDOW}}` = `changelogWindow`, `{{SEAL_SIZE}}` = `sealSize`, `{{INDEX_CELL_MAX}}` = `indexCellMax`, `{{PREAMBLE_MAX_LINES}}` = `preambleMaxLines`) and `{{DOC_CONTRACT_CMD}}` from the scoped command that runs the test, then paste everything below the rule between the `doc-contract-limits:start` and `doc-contract-limits:end` markers in the project's `CLAUDE.md`. The test matches the wording of the numbered lines, so edit numbers, not phrasing.
 
 ---
 
@@ -19,4 +19,5 @@ The canonical limits list. Fill each placeholder from the test's `CONFIG.limits`
 12. Every entry heading is followed by a non-empty body.
 13. At most {{PREAMBLE_MAX_LINES}} non-blank preamble lines, none shaped like entry body, precede a file's first entry.
 14. Each changelog file's newest entry sorts below the next file's oldest, unless the test declares the entry by name with a reason.
-15. This block states the same numbers as the test's `CONFIG`.
+15. The template-token check: no double-brace `UPPER_SNAKE_CASE` template token is left outside code fences and inline code in the files `CONFIG.templateTokens.files` lists, unless `CONFIG.templateTokens.allow` names its file and token with a reason. Run it alone with `{{DOC_CONTRACT_CMD}} -t "template token"`.
+16. This block states the same numbers as the test's `CONFIG`.

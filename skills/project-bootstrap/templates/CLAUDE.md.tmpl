@@ -19,11 +19,17 @@ Placeholders appear in the body as double-brace UPPER_SNAKE tokens.
   SCHEDULED_CI_CMD      Latest scheduled CI runs (scheduled-ci).    Default: gh run list --workflow <detected workflow file> --limit 3
   DOC_CONTRACT_LIMITS   The doc-contract limits list.               Default: doc-system skill's reference/limits.md, filled from the test's CONFIG and DOC_CONTRACT_CMD; the doc-contract-limits:start/end markers around it stay (they are not optional-block markers)
   SUPABASE_PROJECT_REF  Supabase project ref (supabase block only). Default: $SUPABASE_PROJECT_REF if public or no project yet; else ask
+  SUPABASE_RO_CONNECTOR Read-only connector name (connectors).      Default: none; ask
+  SUPABASE_RW_CONNECTOR Writable connector name (connectors).       Default: none; ask
 
 Optional blocks are wrapped in HTML-comment markers BEGIN:<name> and END:<name>.
   database      Postgres in general. Keep for any Postgres-backed project.
   supabase      Supabase specifics, plus one cross-link line under Session Workflow. Keep only with the database block, even before the Supabase project exists.
   scheduled-ci  The scheduled-CI pre-flight check. Keep only when a workflow in .github/workflows/ has a schedule trigger.
+  schema-by-hand    Inside supabase. Keep unless the user chose to let Claude apply schema changes.
+  schema-by-claude  Inside supabase. Keep only when the user chose to let Claude apply schema changes.
+  migration-deny    Inside supabase. Keep only when the project exists and schema-by-hand is kept, i.e. when the apply_migration deny is written.
+  connectors        Inside supabase. Keep only when both connectors exist, each scoped to this project, and their names are real answers.
 -->
 # {{PROJECT_NAME}}: Claude Code Project Context
 
@@ -153,6 +159,9 @@ Why: a script nobody deploys still runs through the same tests, and a docs-only 
 **A probe or new test proves nothing until it has been seen to change behavior, failing against a deliberate break.**
 Why: a check that passes against its own poison is a statement about the check, not the code.
 
+**In a proof or leak check, call grep as `command grep`, and record `type grep` with the proof.**
+Why: a session shell's `grep` can be a wrapper that honors `.gitignore`, and a recursive search through it skips ignored files, the very files a leak check exists to cover.
+
 **Run the suite locally under one timezone, `{{LOCAL_TZ}}`; when a change touches date, timezone or calendar-day logic, also run the target files, not the suite, under `{{SECOND_TZ}}`.**
 Why: the second leg is cheap for a handful of files and is the only per-change coverage of the other side of midnight.
 
@@ -210,8 +219,19 @@ Why: a verification query is code too, and its false negative looks exactly like
 
 Depth on RLS, column grants, views and definer functions lives in the dev-tools `supabase-hardening` skill. Only the always-on rules are here.
 
+<!-- BEGIN:schema-by-hand -->
 **Apply schema changes by hand in the dashboard SQL editor; `supabase db push` is denied at the permission layer (`.claude/settings.json`).**
 Why: the CLI's migration history conflicts with changes applied by hand, and the push fails; the deny rule is committed so it travels with every clone.
+<!-- END:schema-by-hand -->
+<!-- BEGIN:schema-by-claude -->
+**Claude Code applies schema changes only with the writable connector's `apply_migration`, one migration per change; `supabase db push` is denied at the permission layer (`.claude/settings.json`).**
+Why: the CLI keeps its own migration history, which conflicts with changes applied any other way, and the push fails; the deny rule is committed so it travels with every clone.
+<!-- END:schema-by-claude -->
+<!-- BEGIN:migration-deny -->
+
+**The writable connector's `apply_migration` is denied in `.claude/settings.json` too, keyed to the name the connector was added under in Claude Code; after re-adding any connector, re-check the rules with `/permissions` in a terminal `claude` session.**
+Why: Claude.ai's tool toggles never reach Claude Code, and Claude.ai connectors appear here under ID prefixes, so a rule keyed to one silently stops matching when it is re-added, and a deny that stops matching fails open.
+<!-- END:migration-deny -->
 
 **Edge Functions do not deploy on git push: deploy in the same session as the edit, before the commit, and verify the deployment identifier (entrypoint) and update time advanced.**
 Why: otherwise the repo and the live function silently disagree, and the version counter alone can move without a deploy.
@@ -226,11 +246,16 @@ Why: default privileges grant EXECUTE and table access to those roles at creatio
 **Use the read-only MCP connector for verification; reserve the writable connector for rolled-back probes and deploys.**
 Why: a read that cannot write cannot damage production, and the writable connector's extra reach is needed only where a transaction must run.
 
-**The writable connector is scoped to this project (its URL carries `project_ref=`) and added in Claude Code at local scope (`claude mcp add --transport http <name> --scope local <url>`); never use an account-wide writable connector, and never commit an MCP config (`.mcp.json` or any other) holding the project ref.**
-Why: an account-wide connector takes the project ID as an argument, so one wrong ID changes another project's database, and a project-scope config puts the ref in the repo; this is the parallel-session rule under Session Workflow, applied to databases.
+**The writable connector is scoped to this project (its URL carries `project_ref=`) and added in Claude Code at local scope (`claude mcp add --transport http <name> --scope local <url>`); never use an account-wide writable connector, and never commit an MCP config (`.mcp.json` or any other) naming a Supabase server.**
+Why: an account-wide connector takes the project ID as an argument, so one wrong ID changes another project's database, and a committed `.mcp.json` hands a writable server to every session that opens the repo, in every clone; this is the parallel-session rule under Session Workflow, applied to databases.
 
 **Use only the connectors scoped to this project's ref; connectors added in Claude.ai load in every Claude Code session, so another project's may be listed too.**
 Why: another project's connector answers from its own database, and a result from it can pass for this project's.
+<!-- BEGIN:connectors -->
+
+**This project's connectors are `{{SUPABASE_RO_CONNECTOR}}` (read-only, in Claude.ai) and `{{SUPABASE_RW_CONNECTOR}}` (writable, in Claude Code at local scope); never use any other.**
+Why: other projects' connectors appear in every chat and every Claude Code session on the account, so a session sees them all, and only these two answer from this project's database.
+<!-- END:connectors -->
 <!-- END:supabase -->
 
 ---

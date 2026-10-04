@@ -80,6 +80,16 @@ Why: it inherits user-level context, including identity details the host injects
 
 ---
 
+## Proofs
+
+**In a proof or leak check, call grep as `command grep`, and record `type grep` with the proof, from the shell the proof ran in.**
+Why: a grep that honors `.gitignore` skips ignored files, the very files a leak check exists to cover, and a session shell's `grep` can be that wrapper; a script run under `bash` gets the system grep, because a shell function reaches it only when exported.
+
+**Point npm's cache into scratch (`npm_config_cache=<scratch>/npm-cache`) for every proof run, and delete it with the scratch clones.**
+Why: a proof's installs otherwise fill the user's own npm cache, outside scratch, where nothing cleans them up.
+
+---
+
 ## Scripts
 
 **Match whole words with `grep -w`, `git grep -P` or a JS regex, never with `\b`, `\<`, `\>` or `\B` in `grep -E`, `git grep -E`, `sed -E` or `awk`.**

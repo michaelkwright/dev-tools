@@ -20,6 +20,16 @@ About the email: every commit you publish shows it. If you'd rather keep your ad
 
 About Node: the toolkit's tests run on vitest 5, which supports Node 22.12 or later on the 22 line, 24, and 26 or later, but not 23 or 25. Some skills also run TypeScript files directly, which needs 22.18 or later on the 22 line. When in doubt, take the version the Node.js page marks LTS.
 
+### The `claude` command
+
+The Claude desktop app does not put a `claude` command in your terminal, and some steps below need one (section 7, and checking permission rules). Install it with the command from [Claude Code setup](https://code.claude.com/docs/en/setup). On macOS or Linux:
+
+```bash
+curl -fsSL https://claude.ai/install.sh | bash
+```
+
+On Windows, in PowerShell, the setup page gives `irm https://claude.ai/install.ps1 | iex`. This command has not been tested here. Then open a new terminal window and run `claude --version`.
+
 ## 2. Install the toolkit, and pin it
 
 A **commit** is a saved snapshot of every file in a repo, named by a short code such as `1a2b3c4`. Pinning means choosing one commit you have read and staying on it.
@@ -95,27 +105,33 @@ One question is whether the app is for many people, each with their own account,
   - Linux: `wl-copy < .claude/project-instructions.local.md`, or on older desktops `xclip -selection clipboard < .claude/project-instructions.local.md`
   - If none of these works (inside WSL, say), open the file in any text editor and copy it from there.
 - To see hidden folders: in macOS Finder, press **Cmd+Shift+Period** (press it again to hide them). In Windows File Explorer there is no shortcut: choose **View > Show > Hidden items** ([Microsoft's guide](https://support.microsoft.com/en-us/windows/experience/fileexplorer/file-explorer-in-windows)).
+- Bootstrap writes deny rules into `.claude/settings.json`: Claude Code may not force-push or delete branches on GitHub, and for Supabase projects may not run `supabase db push`. To see them, start `claude` in a terminal in the project folder and type `/permissions`. In the desktop app's Code tab, `/permissions` opens a mode picker instead of the rule list.
+- Those rules cover only the usual ways of typing those commands. On GitHub, protect your main branch for real with a ruleset that blocks force pushes and deletion ([creating rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/creating-rulesets-for-a-repository)).
 - Then start a fresh chat in the Project, so it starts with the new instructions. After the first push, connect the repo to the Project so the chat can read your docs ([Use the GitHub integration](https://support.claude.com/en/articles/10167454-use-the-github-integration)).
 
 ## 7. Supabase connectors (Supabase users only)
 
-A **connector** lets Claude reach your Supabase project. Each project needs its own pair, each tied to that one project. Skip this until the Supabase project exists; bootstrap asks whether the pair is set up and, if not, gives you these same steps with your project's ID filled in. Your project's ID is the short code after `/project/` in the Supabase dashboard's address.
+A **connector** lets Claude reach your Supabase project. Each project needs its own pair, each tied to that one project. Skip this until the Supabase project exists; bootstrap asks whether the pair is set up and, if not, gives you these same steps (with your project's ID filled in when the repo is private). Your project's ID is the short code after `/project/` in the Supabase dashboard's address; below it is written `<ref>`.
+
+Build each address by hand as shown, and don't use the Supabase dashboard's one-click Claude.ai install: it hides the address, so you can't see what the connector can reach. In each address, `project_ref=` ties it to one project, `read_only=true` lets it only read, and `features=` turns on only the tool groups listed.
 
 1. **Read-only, in Claude.ai**, for planning chats ([Claude's help page on custom connectors](https://support.claude.com/en/articles/11175166-get-started-with-custom-connectors-using-remote-mcp)):
    - Go to **Customize > Connectors**, click **+ Add**, then **Add custom connector**. On a Team or Enterprise plan, an owner adds it under **Organization settings > Connectors**, and you then click **Connect** under **Customize > Connectors**.
    - Name it after the project, such as `Supabase order-desk read-only`.
-   - For the server URL, enter `https://mcp.supabase.com/mcp?project_ref=<your project ID>&read_only=true`.
+   - For the server URL, enter `https://mcp.supabase.com/mcp?project_ref=<ref>&read_only=true&features=database,debugging,functions,docs`.
    - Keep the default sign-in settings, and sign in to Supabase when asked.
-2. **Writable, in Claude Code**, from the project's folder ([Supabase's MCP guide](https://supabase.com/docs/guides/getting-started/mcp), [Claude Code's MCP guide](https://code.claude.com/docs/en/mcp)). Replace `<your project ID>` before running it:
+2. **Writable, in Claude Code**, from the project's folder ([Supabase's MCP guide](https://supabase.com/docs/guides/getting-started/mcp), [Claude Code's MCP guide](https://code.claude.com/docs/en/mcp)). Replace `<ref>` before running it:
 
    ```bash
-   claude mcp add --transport http supabase-order-desk-rw --scope local "https://mcp.supabase.com/mcp?project_ref=<your project ID>"
+   claude mcp add --transport http supabase-order-desk-rw --scope local "https://mcp.supabase.com/mcp?project_ref=<ref>&features=database,debugging,functions,docs,development"
    ```
 
-   Then start `claude` in that folder, type `/mcp`, choose `supabase-order-desk-rw`, and choose Authenticate. `--scope local` keeps it out of your repo and out of your other projects.
+   Then start `claude` in that folder, type `/mcp`, choose `supabase-order-desk-rw`, and choose Authenticate. `--scope local` keeps it out of your repo and out of your other projects. If you apply database changes yourself, bootstrap blocks this connector's `apply_migration` tool by this exact name, so keep the name, or change the rule in `.claude/settings.json` to match.
 3. Ask Claude Code to regenerate the Claude.ai instructions with the two names, then paste them into the Project again.
 
-Never add the writable one in Claude.ai, or with `--scope project`, and never use one that reaches every project in your account. Supabase's own guide shows `--scope project`, which writes a file into your repo; with the project ID added, that file publishes it with your next push.
+Connectors you add in Claude.ai, from every project, show up in every chat and every Claude Code session on your account. The regenerated instructions name this project's pair and tell Claude never to use any other.
+
+Never add the writable one in Claude.ai, or with `--scope project`, and never use one that reaches every project in your account. Supabase's own guide shows `--scope project`, which writes a `.mcp.json` file into your repo; once committed, that file hands the writable connector to every session that opens the repo, on every computer that clones it.
 
 ## 8. Running more than one project
 

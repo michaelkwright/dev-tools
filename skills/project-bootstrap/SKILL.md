@@ -186,12 +186,12 @@ A "not found" failure in that run means only a file 5b seeds next. A token whose
 ```json
 { "permissions": { "deny": [
   "Bash(git push*--force*)", "Bash(git push* -f*)", "Bash(git push* +*)",
-  "Bash(git push*--de*)", "Bash(git push* -d*)", "Bash(git push* :*)",
+  "Bash(git push*--de*)", "Bash(git push* -d*)", "Bash(git push* :**)",
   "Bash(git push*--m*)", "Bash(git push*--pru*)"
 ] } }
 ```
 
-They stop force pushes (`--force`, `-f`, `--force-with-lease`, `--force-if-includes`, a `+refspec`) and remote branch deletion (`--delete`, `-d`, a `:branch` refspec, `--mirror`, `--prune`), with git's abbreviations of those long options (`--del`, `--mir`, `--pru`). A `*` in a Bash rule matches any text, spaces included, at any point in the rule ([Claude Code's permissions docs](https://code.claude.com/docs/en/permissions), "Wildcard patterns"), so each rule matches its option wherever it sits after `git push`. A branch name that happens to contain one of those strings is denied too; that push is the user's to run.
+They stop force pushes (`--force`, `-f`, `--force-with-lease`, `--force-if-includes`, a `+refspec`) and remote branch deletion (`--delete`, `-d`, a `:branch` refspec, `--mirror`, `--prune`), with git's abbreviations of those long options (`--del`, `--mir`, `--pru`). A `*` in a Bash rule matches any text, spaces included, at any point in the rule ([Claude Code's permissions docs](https://code.claude.com/docs/en/permissions), "Wildcard patterns"), so each rule matches its option wherever it sits after `git push`. The `:branch` rule ends in `**` because a rule ending in `:*` is read as the trailing-wildcard suffix, which drops the colon and lets `git push origin :<branch>` through. A branch name that happens to contain one of those strings is denied too; that push is the user's to run.
 
 **Name in the report every push form the denies cannot catch (the list under Known limits).**
 Why: a Bash rule matches the command text Claude writes, not the program it runs, so a deny is a guard on the usual forms, and a user who thinks it covers every form stops looking.

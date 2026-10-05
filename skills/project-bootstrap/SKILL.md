@@ -88,6 +88,9 @@ Why: a question the user cannot parse gets a guessed answer, and a guess written
 
 The `database`, `supabase`, `schema-by-hand` and `schema-by-claude` blocks are in both templates; `scheduled-ci`, `connectors` and `migration-deny` in `CLAUDE.md` only; and `strategy`, `digest`, `llm`, `domain-skill` and `multi-user` in the instructions only. When the schema question is not asked (no Supabase project yet, or a database that is not Supabase), `schema-by-hand` is kept and `schema-by-claude` and `migration-deny` are stripped.
 
+**Ask the rows that need an existing Supabase project (the connectors, their names, the schema question, the project's ID, the user ID) only once the user has said the project exists: as a follow-up to the batch, never as conditional sub-questions inside it. A linked ref found in step 2 makes the confirmation itself a batch row, and the rest follow it.**
+Why: a question shown before the project exists invites a guessed answer, and the no-backend path below asks nothing more about the project.
+
 **Ask the remote question once, as its own follow-up after the batch is answered, and only when `git remote` lists none and the commit answer is yes: "Create a `<visibility>` GitHub repo named `<name>`, and upload this commit to it?", with the visibility the batch settled or detection found (`<name>`: the project name, lowercased, spaces as dashes; the user may change it).**
 Why: the question names the visibility, so asked inside the batch it states a guess the user may not have settled yet.
 

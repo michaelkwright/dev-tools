@@ -88,6 +88,21 @@ Why: a grep that honors `.gitignore` skips ignored files, the very files a leak 
 **Point npm's cache into scratch (`npm_config_cache=<scratch>/npm-cache`) for every proof run, and delete it with the scratch clones.**
 Why: a proof's installs otherwise fill the user's own npm cache, outside scratch, where nothing cleans them up.
 
+**Run a cold proof as `claude -p` children, one per case, each continued turn by turn with `--resume` and the `session_id` its JSON output gives; the parent answers only from the case's fixed answer sheet, and any question not on the sheet is a finding.**
+Why: a child starts with none of the parent's context, so what it does comes from the repo, and an answer improvised mid-run tests the parent's judgment instead of the skill; a subagent still does not count (Skills, above).
+
+**Start every child with `--strict-mcp-config` and an empty MCP config (`--mcp-config '{"mcpServers":{}}'`), and confirm from its init output (`--output-format stream-json --verbose`) that it has no MCP servers and no `mcp__` tools.**
+Why: otherwise a child loads the account's connectors, and a proof that can reach a real database is neither cold nor safe.
+
+**Give every child an explicit `--allowedTools` list, have it read the skill from the detached proof clone (`--add-dir <clone>`, with `--disable-slash-commands` so the installed copy is not offered), and have it write its report to a file in scratch; record every tool it was refused.**
+Why: with an explicit list each refusal is a recorded fact, the installed skill need not be the commit under test, and a report already in a file survives a child cut off mid-answer.
+
+**Run no child while `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` is set: report the cold proofs as not run, and never unset either to get around it.**
+Why: with a key set, children bill the API instead of the subscription login, and unsetting a key overrides a choice that is the user's.
+
+**After every child's last turn, delete the transcript directories its sessions wrote under `~/.claude/projects/`, chosen by the scratch cwd their transcripts record and nothing else; run a single-turn child with `--no-session-persistence`, which writes none.**
+Why: a child's transcript outlives its scratch folder, and nothing else ever cleans it up, while every other directory there belongs to some other session.
+
 ---
 
 ## Scripts

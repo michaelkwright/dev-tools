@@ -1,0 +1,60 @@
+#!/bin/sh
+# Push guard. Seeded from dev-tools @ {{DEV_TOOLS_SHA}}; this file is now the
+# project's own, and a later port of dev-tools changes updates that commit to
+# the one ported from.
+#
+# Git runs this before a push sends anything, with one line per ref on stdin:
+#   <local-ref> <local-sha> <remote-ref> <remote-sha>
+# and a non-zero exit aborts the whole push (githooks(5), "pre-push").
+# It refuses, for any ref the push would change on the remote:
+#   - deleting it (the local sha is all zeros);
+#   - updating it when the remote's commit is not an ancestor of the pushed
+#     one, which is a force push;
+#   - updating it when the remote's commit is not in this clone, since then
+#     its ancestry cannot be checked: fetch first.
+# A new ref (the remote sha is all zeros) and a fast-forward pass.
+#
+# Installed per clone: git config core.hooksPath .githooks
+# The human's escape hatch, from a terminal: git push --no-verify
+# It stops mistakes, not someone set on getting around it.
+#
+# A pre-push hook already in this clone's own hooks folder runs after the
+# check passes, with the same input, since core.hooksPath would otherwise stop
+# git from running it. PUSH_GUARD_ONLY=1 skips that, for this guard called
+# from inside another hook.
+
+input="$(mktemp "${TMPDIR:-/tmp}/push-guard.XXXXXX")" || exit 1
+trap 'rm -f "$input"' EXIT
+cat > "$input"
+
+status=0
+while read -r lref lsha rref rsha; do
+  [ -n "$rref" ] || continue
+  case "$lsha" in
+    *[!0]*) ;;
+    *)
+      echo "pre-push: refusing to delete $rref on $1" >&2
+      status=1
+      continue ;;
+  esac
+  case "$rsha" in
+    *[!0]*) ;;
+    *) continue ;;
+  esac
+  if ! git cat-file -e "$rsha^{commit}" 2>/dev/null; then
+    echo "pre-push: $rref on $1 is at a commit this clone does not have; fetch first (git fetch $1), then push again" >&2
+    status=1
+  elif ! git merge-base --is-ancestor "$rsha" "$lsha" 2>/dev/null; then
+    echo "pre-push: refusing to rewrite $rref on $1: the pushed commit does not contain the remote's (a force push)" >&2
+    status=1
+  fi
+done < "$input"
+[ "$status" -eq 0 ] || exit "$status"
+
+[ -z "${PUSH_GUARD_ONLY:-}" ] || exit 0
+prev="$(git rev-parse --git-common-dir)/hooks/pre-push"
+if [ -x "$prev" ] && ! [ "$prev" -ef "$0" ]; then
+  "$prev" "$@" < "$input"
+  exit $?
+fi
+exit 0

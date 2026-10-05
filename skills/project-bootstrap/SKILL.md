@@ -5,7 +5,7 @@ description: Use to set up the planning → Claude Code workflow in a new repo, 
 
 # Project bootstrap
 
-Seeds a repo with a `CLAUDE.md`, the doc system and its contract test, committed permission rules, and the Claude.ai planning instructions. The rules live in the templates and in the doc-system skill; this file only sequences them. "The target" below is the repo being bootstrapped; "dev-tools" is the checkout this skill lives in.
+Seeds a repo with a `CLAUDE.md`, the doc system and its contract test, committed permission rules, a pre-push guard, and the Claude.ai planning instructions. The rules live in the templates and in the doc-system skill; this file only sequences them. "The target" below is the repo being bootstrapped; "dev-tools" is the checkout this skill lives in.
 
 The first planning chat, before this skill runs, can open with [`templates/kickoff-chat.md`](templates/kickoff-chat.md): it settles in conversation the answers step 3 asks for.
 
@@ -34,7 +34,7 @@ Read the target and derive every placeholder default from what is there (each te
 
 - `package.json`: name, scripts, the test runner, the lockfile's package manager; any `vitest.config.*` or `test` key in `vite.config.*`.
   - `BUILD_CMD`: the build script. `TYPECHECK_CMD`: the typecheck script, else the `tsc` step the build runs (e.g. `npx tsc -b`). `TEST_CMD`: the test script (`npm test`) when it runs the test runner, else the runner directly. A script that only prints an error, like npm's default, is no test command.
-  - `TZ_TEST_GREP`: the default grep over every directory this step finds holding source or tests, the repo root included. When the root itself holds source or test files, search `.` with `--exclude-dir=node_modules --exclude-dir=.git`, one `--exclude-dir` for each build output folder, and `--exclude='*.md'`, since `CLAUDE.md` records the grep's own search words and would match every run; otherwise list the directories, never `src/` alone unless it is the only one.
+  - `TZ_TEST_GREP`: the default `command grep` over every directory this step finds holding source or tests, the repo root included, called as `command grep` so a session shell and a script run the same program. When the root itself holds source or test files, search `.` with `--exclude-dir=node_modules --exclude-dir=.git`, one `--exclude-dir` for each build output folder, and `--exclude='*.md'`, since `CLAUDE.md` records the grep's own search words and would match every run; otherwise list the directories, never `src/` alone unless it is the only one.
 - Framework markers (vite, react, phaser): a DOM framework means the report points to the vitest-suite-speed skill for the test-environment split.
 - `supabase/` suggests the database and supabase blocks; `supabase/.temp/project-ref` holds a linked ref, which step 3 asks the user to confirm as this app's project. `supabase/migrations/` names tables the step-5e scoping check can read.
 - MCP configs in the target: `.mcp.json`, `.cursor/mcp.json` and `.vscode/mcp.json`, for the step-5e connector check.
@@ -42,6 +42,8 @@ Read the target and derive every placeholder default from what is there (each te
 - Strategy docs: a Markdown file whose name or first heading marks it as strategy, positioning or launch plan (`STRATEGY.md`, `docs/launch-plan.md`, say). Only a found doc lets step 3 offer the `strategy` block; with none, it is stripped without asking.
 - `LOCAL_TZ`: the system timezone, from `node -p 'Intl.DateTimeFormat().resolvedOptions().timeZone'`, else the zone name in `readlink /etc/localtime`. Step 3 only confirms it.
 - Git: whether the target is a repository (`git rev-parse --is-inside-work-tree`), its remotes (`git remote -v`), and anything already uncommitted (`git status --porcelain`), for step 5f and the report's GitHub ruleset line.
+- Hooks: an existing pre-push hook, for the step-5c guard merge: `git config core.hooksPath` and the `pre-push` file in the folder it names, a hook manager's config (`.husky/`, `lefthook.yml`, `.pre-commit-config.yaml`), and `.git/hooks/pre-push`.
+- Rulesets, for a private repo with a GitHub remote: `gh api repos/<owner>/<repo>/rulesets --silent`. Exit 0 means they are available; a 403 saying "Upgrade to GitHub Pro or make this repository public" means the plan has none for private repositories; anything else (no `gh`, signed out, a 404) leaves it to step 3.
 - Existing `CLAUDE.md`, `.claude/settings.json`, `.gitignore`, and every doc the doc-system ADOPT inventory names. SEED when none of the doc-system files exist (its seed set; `CLAUDE.md` and a README are not among them); ADOPT otherwise.
 - Visibility: `gh repo view --json visibility` when `gh` is available and the remote is on GitHub; otherwise ask.
 - The contract-test path: `src/test/doc-contracts.test.ts` by default. Use the repo's test directory if tests live elsewhere. If a tsconfig includes the path without node types, use a top-level `test/` outside every tsconfig instead, since the test imports `node:fs`.
@@ -49,7 +51,7 @@ Read the target and derive every placeholder default from what is there (each te
 **When the source sits at the repo root rather than in `src/`, put the contract test where this step found existing tests, else in `test/` at the root; never create a `src/test/` that holds only it.**
 Why: a `src/` holding nothing but a test folder reads as the start of a layout the repo does not have, and the next session puts code there.
 
-**Already bootstrapped** means every piece exists: `CLAUDE.md` with a `Seeded from dev-tools @` line and the limits markers; the doc system (the seed set, or the files its ADOPT mapping named); the contract test; `.claude/settings.json` with the step-5c push denies, plus the `supabase db push` deny if `CLAUDE.md` has a Supabase section; and the `.gitignore` line. If so, skip steps 3 to 6 and change nothing tracked. Run step 5e with the command recorded in `CLAUDE.md`, and report "already bootstrapped from dev-tools @ <recorded SHA> (current: <DEV_TOOLS_SHA>); nothing changed" with the 5e results. Never re-seed or update files the project now owns. If only some pieces exist, do only the missing ones. `.claude/project-instructions.local.md` is untracked, so it is not a piece: when it is missing, or the user asks to regenerate it (once the backend or its connectors exist, say), offer step 5d alone, asking only the step-3 questions it needs. A regeneration after the backend or connectors come to exist also offers, each as a shown merge, what the first run held back: `CLAUDE.md`'s `connectors` and `migration-deny` blocks and the step-5c `apply_migration` deny.
+**Already bootstrapped** means every piece exists: `CLAUDE.md` with a `Seeded from dev-tools @` line and the limits markers; the doc system (the seed set, or the files its ADOPT mapping named); the contract test; `.claude/settings.json` with the step-5c push denies, plus the `supabase db push` deny if `CLAUDE.md` has a Supabase section; the step-5c push guard (`.githooks/pre-push`, or its stanza in an existing hook); and the `.gitignore` lines. If so, skip steps 3 to 6 and change nothing tracked. Run step 5e with the command recorded in `CLAUDE.md`; when `git config core.hooksPath` in this clone does not name the guard's folder, give the step-5c setup line. Then report "already bootstrapped from dev-tools @ <recorded SHA> (current: <DEV_TOOLS_SHA>); nothing changed" with the 5e results. Never re-seed or update files the project now owns. If only some pieces exist, do only the missing ones. `.claude/project-instructions.local.md` is untracked, so it is not a piece: when it is missing, or the user asks to regenerate it (once the backend or its connectors exist, say), offer step 5d alone, asking only the step-3 questions it needs. A regeneration after the backend or connectors come to exist also offers, each as a shown merge, what the first run held back: `CLAUDE.md`'s `connectors` and `migration-deny` blocks and the step-5c `apply_migration` deny.
 
 ## 3. Ask only what detection can't answer, in one batch
 
@@ -80,6 +82,7 @@ Why: a question the user cannot parse gets a guessed answer, and a guess written
 | "The doc check this setup installs runs on vitest, a test runner, and it isn't installed. Add it now?" | the vitest install (step 5b) | a test command exists but vitest does not |
 | "There's no `<build / typecheck>` command yet. Add one now, or leave it for later?" | `BUILD_CMD`, `TYPECHECK_CMD`; "later" writes the not-set-up line (below) | per missing command |
 | "Will the repo be public (anyone can read it) or private?" | visibility | detection could not tell |
+| "Is the GitHub account that owns the repo on the free plan, or a paid one (Pro, Team or Enterprise)?" | the report's ruleset line (step 5c) | the repo is private, has a GitHub remote, and the rulesets check could not tell |
 | "What's the smallest first piece you want to build?" | the first `ROADMAP.md` epic (step 5b) | always; "not sure yet" is a fine answer |
 | "Save these setup files as a commit when done? (Recommended: yes.)" When step 2 found uncommitted files already there, list them and ask whether the commit includes them too. | step 5f commit | always |
 
@@ -113,7 +116,7 @@ The instructions' supabase block is kept only when the ref, the owner user ID an
 **No connectors yet: when the project exists but its two connectors do not, ask nothing more about them, strip `CLAUDE.md`'s `connectors` block and the instructions' supabase block, and give the connector setup below in the report, with "regenerate the Claude.ai instructions after the connectors exist".**
 Why: the connector rules name each connector, and a name written before the connector exists reads as one a session can use.
 
-**Refuse an account-wide writable connector: when the user says the one that can change data reaches every project in their account, record no name and go on as if the connectors were not set up; give the scoped setup, and tell them to remove the account-wide one.**
+**Refuse an account-wide writable connector: when the user says the one that can change data reaches every project in their account, record no name and go on as if the connectors were not set up; give the scoped setup, and tell them to remove the account-wide one. The read-only connector's scoping check still runs (step 5e).**
 Why: an account-wide connector takes the project ID as an argument on every call, so with sessions open on two projects, one wrong ID changes the other project's database; a connector scoped to one project cannot.
 
 An account-wide read-only connector is not refused, but the report flags it and gives the scoped setup for it.
@@ -151,7 +154,10 @@ Why: the project's existing notes and settings are its own, and a bootstrap that
 - Existing `CLAUDE.md` (this skill governs it, not doc-system ADOPT): the filled template, with the old content kept verbatim under a `## Project Notes` section just before `## Known Failure Patterns`; a leading H1 title is dropped, and the proposal says so. Flag any old note that contradicts a template rule, in the proposal and the report, instead of choosing between them.
 - Existing docs: the doc-system ADOPT mapping, including the `CONFIG` fit, is part of this proposal, since step 5a needs its values.
 - Existing JSON: merged key by key; arrays are unioned; the result must parse.
-- Existing `.gitignore`: the merge only appends lines and changes none, and it is shown and approved like any other. It holds the step-5d line, plus `node_modules/` and the build output folder when a commit is wanted and they are missing.
+- Existing `.gitignore`: the merge only appends lines and changes none, and it is shown and approved like any other. It holds the step-5d line and `.claude/settings.local.json`, plus `node_modules/` and the build output folder when a commit is wanted and they are missing. A new `.gitignore` holds the same lines.
+
+**List `.claude/settings.local.json` in the repo's own `.gitignore`, even when this machine already ignores it.**
+Why: the ignore Claude Code relies on can live in a machine-wide git ignore file, which no other machine has, so on another clone the file shows as untracked and its approvals can be committed.
 - `package.json` and the lockfile change only through an approved dependency install, or the `test` script the step-3 test answer approved.
 
 ## 5. Write, in this order
@@ -181,23 +187,54 @@ A "not found" failure in that run means only a file 5b seeds next. A token whose
   - Name the open archive `v<oldest existing version>-onward.md`; archive file names keep the `v` form whatever the heading format.
   - Warn in the report if the fitted entry marker would also match a non-entry heading a later edit might add (an `## Unreleased` section, say).
 
-**c. `.claude/settings.json`**, the shared settings file meant to be committed (not `settings.local.json`). Into every target, merge the push denies, and show the merge when the file already exists:
+**c. `.claude/settings.json` and the push guard.** The settings file is the shared one, meant to be committed (not `settings.local.json`). Into every target, merge the push denies, and show the merge when the file already exists:
 
 ```json
 { "permissions": { "deny": [
   "Bash(git push*--force*)", "Bash(git push* -f*)", "Bash(git push* +*)",
   "Bash(git push*--de*)", "Bash(git push* -d*)", "Bash(git push* :**)",
-  "Bash(git push*--m*)", "Bash(git push*--pru*)"
+  "Bash(git push*--m*)", "Bash(git push*--pru*)",
+  "Bash(git*--no-veri*)", "Bash(git*-c*core.hooksPath*)", "Bash(git*-c*core.hookspath*)"
 ] } }
 ```
 
 They stop force pushes (`--force`, `-f`, `--force-with-lease`, `--force-if-includes`, a `+refspec`) and remote branch deletion (`--delete`, `-d`, a `:branch` refspec, `--mirror`, `--prune`), with git's abbreviations of those long options (`--del`, `--mir`, `--pru`). A `*` in a Bash rule matches any text, spaces included, at any point in the rule ([Claude Code's permissions docs](https://code.claude.com/docs/en/permissions), "Wildcard patterns"), so each rule matches its option wherever it sits after `git push`. The `:branch` rule ends in `**` because a rule ending in `:*` is read as the trailing-wildcard suffix, which drops the colon and lets `git push origin :<branch>` through. A branch name that happens to contain one of those strings is denied too; that push is the user's to run.
 
+The last three stop Claude's ways around the push guard below: `--no-verify` and the abbreviations git accepts for it (`--no-verif`, `--no-veri`; shorter ones are ambiguous with `--no-verbose`, as tested on git 2.39), anywhere in a git command, which also denies `git commit --no-verify`; and a `core.hooksPath` set on git's command line with `-c` or `--config-env`, in its two usual spellings. Neither matches the guard's own install line, `git config core.hooksPath .githooks`.
+
 **Name in the report every push form the denies cannot catch (the list under Known limits).**
 Why: a Bash rule matches the command text Claude writes, not the program it runs, so a deny is a guard on the usual forms, and a user who thinks it covers every form stops looking.
 
-**When a GitHub remote exists or is created, the report recommends a ruleset on the default branch with "Restrict deletions" and "Block force pushes" ([GitHub's rulesets docs](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/creating-rulesets-for-a-repository)); the push denies are the local layer.**
-Why: a ruleset is enforced on GitHub's side for every client and every form of the command, which is the control that actually holds.
+**Install the push guard in every target: `templates/pre-push.tmpl`, filled, as `.githooks/pre-push`, executable and committed, switched on with `git config core.hooksPath .githooks` from the target's folder.**
+Why: the hook runs inside git for every push, whatever command text started it, so it refuses the forms the denies cannot see: `git -C . push --force`, bundled flags such as `-uf`, an alias, a script.
+
+It refuses deleting a remote ref, updating one whose current commit is not an ancestor of the pushed commit, and updating one whose current commit this clone does not have ("fetch first"); a new ref and a fast-forward pass. `core.hooksPath` is per-clone config that git never copies, so the `CLAUDE.md` template carries the setup line for fresh clones and a pre-push check of it. When the target is not a repository yet, the install runs in step 5f after `git init`; with no commit wanted and no repository, the file is written and the report gives `git init` and the setup line to run later.
+
+**When the target already has a pre-push hook, add the guard to it; never replace, move or switch off what is there, and show the merge.**
+Why: the existing hook is the project's own check, and a guard that silently stops it running trades one protection for another.
+
+- `.git/hooks/pre-push` with `core.hooksPath` unset (a hand-written hook, or one a manager such as lefthook or pre-commit installed there): install the guard as above and leave the old hook where it is. Setting `core.hooksPath` stops git from running it, so the guard runs it after its own check passes, with the same input.
+- `core.hooksPath` already set (husky, say, or a committed hooks folder): leave the setting alone, write the guard to `.githooks/pre-push` all the same, and add this stanza at the top of the pre-push hook that folder holds, just under its first line, or of the file the manager generates it from (husky: `.husky/pre-push`), and write `CLAUDE.md`'s setup line and pre-push check for the folder `core.hooksPath` names and the manager's own install step. Re-feeding the input lets the existing hook read it as before:
+
+  ```sh
+  # Push guard: refuses force pushes and remote ref deletions (.githooks/pre-push)
+  guard_in="$(mktemp)" || exit 1
+  cat > "$guard_in"
+  PUSH_GUARD_ONLY=1 sh "$(git rev-parse --show-toplevel)/.githooks/pre-push" "$@" < "$guard_in" || { rm -f "$guard_in"; exit 1; }
+  exec < "$guard_in"
+  rm -f "$guard_in"
+  ```
+
+The human's escape hatch is `git push --no-verify`, typed in a terminal; the denies above keep it from Claude. The hook is `sh`; on Windows it runs under Git for Windows' bash, untested there.
+
+**Recommend a GitHub ruleset only where the repo's visibility and plan allow one, and otherwise name the push guard as the layer that holds.**
+Why: a ruleset is enforced on GitHub's side for every client and every form of the command, which makes it the control that actually holds where it exists; but on the free plan, protected branches are a paid feature for private repositories ([GitHub's plans](https://docs.github.com/en/get-started/learning-about-github/githubs-plans)), and GitHub's API refuses rulesets there too, asking for an upgrade or a public repository, so recommending one there sends the user to a 403 and leaves them believing in a layer that does not exist.
+
+The report's ruleset line, by case:
+- A public GitHub repo, or a private one where rulesets are available (a paid plan): a ruleset on the default branch with "Restrict deletions" and "Block force pushes" ([creating rulesets](https://docs.github.com/en/repositories/configuring-branches-and-merges-in-your-repository/managing-rulesets/creating-rulesets-for-a-repository)); the push denies and the guard are the local layers.
+- A private GitHub repo on the free plan: rulesets and branch protection are not available for it, and the push guard is the layer that holds, with the denies in front of it.
+- No remote: one line, "When you add a GitHub remote: if the repo is public, or private on a paid plan, add a ruleset that blocks force pushes and deletion (<the rulesets link>); a private repo on the free plan cannot have one, and the push guard is the layer that holds."
+- A remote that is not on GitHub: the push denies and the guard are the only layers.
 
 With the supabase block kept, also merge in:
 
@@ -232,7 +269,7 @@ Checks, over every Markdown file written or merged (and the test file where name
 
 ```bash
 awk 'FNR==1{f=0} /^[ \t]*```/{f=!f; next} !f && /\{\{/{print FILENAME":"FNR": "$0; bad=1} END{exit bad}' <files>
-command grep -nE '\{\{[A-Z_]+\}\}' <files> <test file>    # must print nothing
+command grep -nE '\{\{[A-Z_]+\}\}' <files> <test file> .githooks/pre-push    # must print nothing
 command grep -niE 'your[-_ ]?(project|ref|user|owner|id|connector)|placeholder|changeme|xxxx|lorem|dummy' <files>    # must print nothing
 awk 'FNR==1{f=0;b=0;r=0} /^[ \t]*```/{f=!f} f{next} /^[ \t]*$/{if(++b>1){print FILENAME":"FNR": blank-line run"; bad=1}; next} {b=0} /^---[ \t]*$/{if(r){print FILENAME":"FNR": doubled ---"; bad=1}; r=1; next} {r=0} END{exit bad}' <files>    # layout
 ```
@@ -245,7 +282,7 @@ printf '%s\n' "$owner_id" | command grep -qxiE '[0-9a-f]{8}-([0-9a-f]{4}-){3}[0-
 ```
 
 **Run every bootstrap check with `command grep`, and record `type grep` in the report.**
-Why: a session shell's `grep` can be a wrapper that honors `.gitignore`, and a recursive search through it skips ignored files, the very files a leak check exists to cover.
+Why: a session shell's `grep` can be a wrapper that honors `.gitignore`: a recursive search through it skips every ignored file, such as the `.claude/project-instructions.local.md` this bootstrap writes and ignores, while still reading untracked files and any file named outright, so a leak check passes over exactly the files it exists to cover.
 
 With the supabase block kept, check for repo-level MCP configs from the target's folder, with `$ref` empty when no ref is known:
 
@@ -253,7 +290,7 @@ With the supabase block kept, check for repo-level MCP configs from the target's
 for f in .mcp.json .cursor/mcp.json .vscode/mcp.json; do [ -f "$f" ] && command grep -liF -e supabase -e project_ref -e project-ref ${ref:+-e "$ref"} "$f"; done    # must print nothing
 ```
 
-With the project and at least one of its connectors existing, run the scoping check on each of this project's connectors whose tools this session can see under its name:
+With the project and at least one of its connectors existing, run the scoping check on each of this project's connectors whose tools this session can see under its name. The read-only connector's check, or its from-a-chat version below, runs whatever the writable answer was, a refused account-wide one included:
 
 1. Tool-input test: its `execute_sql` takes no `project_id` input. A server scoped with `project_ref=` drops that input from every tool ([Supabase's MCP README](https://github.com/supabase-community/supabase-mcp)), so one that asks for it reaches every project in the account.
 2. Read-only connector only: `select current_user, current_setting('transaction_read_only');` must return `supabase_read_only_user` and `on`.
@@ -271,8 +308,8 @@ Why: it prints a Claude.ai connector's URL without its query string, so a scoped
 Why: a committed MCP config hands its server to every session that opens the repo, and a connector that takes a `project_id` reaches every project in the account.
 
 **f. Commit and remote**, per the step-3 answers:
-- Commit yes: run `git init` first if the target is not a repository, stage the files this bootstrap created or merged (plus the already-uncommitted files only if the user said to include them), confirm with `git status` that nothing ignored-worthy (`node_modules/`, build output, `.claude/project-instructions.local.md`, any MCP config naming a Supabase server) is staged, and commit as `Set up the project workflow (dev-tools @ <DEV_TOOLS_SHA>)`.
-- Remote yes: check `gh auth status` first; then `gh repo create <name> --<public|private> --source . --remote origin --push`. If `gh` is missing or signed out, skip it and say how to do it later.
+- Commit yes: run `git init` first if the target is not a repository, install the step-5c push guard if it waited for the repository, stage the files this bootstrap created or merged (plus the already-uncommitted files only if the user said to include them), confirm with `git status` that nothing ignored-worthy (`node_modules/`, build output, `.claude/project-instructions.local.md`, any MCP config naming a Supabase server) is staged, and commit as `Set up the project workflow (dev-tools @ <DEV_TOOLS_SHA>)`.
+- Remote yes: check `gh auth status` first; then `gh repo create <name> --<public|private> --source . --remote origin --push`, and for a private repo run step 2's rulesets check against it for the report's ruleset line. If `gh` is missing or signed out, skip it and say how to do it later.
 
 **Never push without a yes to the step-3 remote question; with an existing remote, leave the push to the user.**
 Why: a push publishes, and for a public repo it cannot be taken back.
@@ -284,11 +321,16 @@ Why: attribution is the user's configured choice, and a setup commit that edits 
 
 Skip this step silently unless the scrub config folder exists: `$SCRUB_CONFIG_DIR` when set, else `~/.config/dev-tools/scrub/`, the same lookup as dev-tools' `scripts/scrub.sh`. It serves only dev-tools maintainers, whose push gate reads that private folder.
 
-When it exists, and only on approval: create `denylist.d/<project>.txt` there (project name, repo slug, Supabase ref, and any IDs gathered, one per line), create `vocab.d/<project>.txt` (below), and add a `sources.txt` line (`<absolute repo path> <subpaths>`, the source directories whose file names identify the project). Never write any of them inside any repo.
+When it exists, and only on approval: create `denylist.d/<project>.txt` there (project name, repo slug, Supabase ref, and any IDs gathered, one per line, a multi-word name written as below), create `vocab.d/<project>.txt` (below), and add a `sources.txt` line (`<absolute repo path> <subpaths>`, the source directories whose file names identify the project). Never write any of them inside any repo.
 Why: later distillation from this project into dev-tools is then blocked from leaking its names, and warned on its vocabulary.
 
-**Derive `vocab.d/<project>.txt` from the target as read in step 2: its distinctive domain nouns, table and function names, and product names, one whole word per line. Favor precision over recall, and leave out plain dictionary words.**
+**Derive `vocab.d/<project>.txt` from the target as read in step 2: its distinctive domain nouns, table and function names, and product names, one entry per line. Favor precision over recall, and leave out plain dictionary words.**
 Why: the gate warns on every bounded match, inside snake_case and camelCase identifiers too (the rule is in the header of dev-tools' `scripts/scrub.sh`), so a common word floods each scan with hits that bury the one that identifies the project.
+
+**Write a multi-word name, in either file, as one entry with its words separated (`order-desk`, `order desk` or `orderDesk`), never joined into one lowercase word, and never split into one word per line.**
+Why: the gate splits an entry into words at `-`, `_`, spaces and camelCase humps and matches every joining of them, so one separated entry catches the name spaced, hyphenated, snake_case, camelCase, PascalCase and joined, in any case and with a plural last word; a joined entry has no words to split and misses the spaced, hyphenated and snake_case forms; and a generic word on a line of its own flags every mention of the domain the project is named after.
+
+One such entry still misses the name across other separators (`order.desk`, `order/desk`, two spaces, a line break) and a word alone, which is the point. The report names the spellings each multi-word entry catches by form (spaced, hyphenated, snake_case, camelCase, PascalCase, joined, plural), never by the terms themselves.
 
 Create it in the same registration: the gate stops with exit 2 when `vocab.d/` holds no entries, and a project registered without its own file is checked for its names but never for its vocabulary.
 
@@ -302,7 +344,9 @@ The report shows the registration's result: each file written or appended, with 
 - Checks: one line for each check this run made, ending `recorded: <the command as CLAUDE.md records it>` when the repo can rerun it, else `bootstrap only`. The doc-contract test is recorded as `DOC_CONTRACT_CMD`, and its template-token check, which runs inside it, gets a line of its own recorded as `DOC_CONTRACT_CMD -t "template token"`; the build is recorded as `BUILD_CMD`. The source pin, the break-and-restore proof, the step-5e `{{`, placeholder, stand-in and layout checks, the Supabase shape checks, the connector checks and the staging check are bootstrap only; an ADOPT's pre-run is the template-token check, so it is recorded.
 - The commit made (its short SHA) or not, and the remote created and pushed or not.
 - Copying the instructions again: the one-line command for this platform with the file's full path (macOS `pbcopy < <path>`; Windows PowerShell `Get-Content -Raw -Encoding utf8 <path> | Set-Clipboard`, untested on Windows; Linux the first of step 5d's three tools that `command -v` finds, even when the user said no there), and where to paste: the Claude.ai Project's custom instructions.
-- Push denies: the forms they stop and every form they cannot catch (Known limits below). When a GitHub remote exists or was created, the ruleset recommendation from step 5c, with its link.
+- Push denies: the forms they stop and every form they cannot catch (Known limits below).
+- Push guard: installed, merged into an existing hook (with the merge shown), or written and waiting for `git init`; that `git config core.hooksPath .githooks` switches it on in each fresh clone; that the human's escape hatch is `git push --no-verify` from a terminal; and that it stops mistakes, not an agent set on getting around it (Known limits below).
+- The ruleset line from step 5c, for the case that applies.
 - Connectors, with the supabase block kept:
   - No project yet: only the one line from step 3, and nothing else about connectors.
   - Project exists: each flag from the step-5e connector checks, each scoping check's result (or the message to run it from a chat), the writable connector's local-scope command and both connector URLs from step 3 (the real ref for a private repo, `<ref>` for a public one), and, when the two scoped connectors do not both exist (none yet, or an account-wide writable one refused), the whole connector setup from step 3.
@@ -312,6 +356,7 @@ The report shows the registration's result: each file written or appended, with 
 
 ## Known limits
 
-- **The push denies match command text, so these forms pass them:** git's global options before `push` (`git -C <dir> push`, `git -c <key>=<value> push`, `git --git-dir=<dir> push`); quoted words (`git 'push'`, `"+main"`, `'--force'`); git run by path (`/usr/bin/git push`) or inside `sh -c`, `bash -c`, `eval`, `xargs` with flags, or an environment runner such as `npx`; bundled short flags where `f` or `d` is not first (`-uf`, `-qd`); a git alias (`git config alias.fp "push --force"`); a configured refspec or mirror (`remote.<name>.push` with a leading `+`, `remote.<name>.mirror`) that turns a plain `git push` into a force push, deletion or mirror; any script or tool that pushes or deletes on its own (an npm script, a Node or Python script, `gh api -X DELETE .../git/refs/heads/<branch>`); a mod whose `tool.check` handler approves the call, outside managed settings and Team or Enterprise plans; and every push the user runs outside Claude Code. The GitHub ruleset in step 5c covers all of them for the default branch.
+- **The push denies match command text, so these forms pass them:** git's global options before `push` (`git -C <dir> push`, `git -c <key>=<value> push`, `git --git-dir=<dir> push`); quoted words (`git 'push'`, `"+main"`, `'--force'`); git run by path (`/usr/bin/git push`) or inside `sh -c`, `bash -c`, `eval`, `xargs` with flags, or an environment runner such as `npx`; bundled short flags where `f` or `d` is not first (`-uf`, `-qd`); a git alias (`git config alias.fp "push --force"`); a configured refspec or mirror (`remote.<name>.push` with a leading `+`, `remote.<name>.mirror`) that turns a plain `git push` into a force push, deletion or mirror; any script or tool that pushes or deletes on its own (an npm script, a Node or Python script, `gh api -X DELETE .../git/refs/heads/<branch>`); a mod whose `tool.check` handler approves the call, outside managed settings and Team or Enterprise plans; and every push the user runs outside Claude Code. The push guard catches each of these that runs git's own push with hooks on, except a deletion by `--mirror` (next item), and a GitHub ruleset, where the plan allows one, covers all of them for the default branch.
+- **The push guard stops mistakes, not an agent set on getting around it:** it runs only when git runs it, so these pass it: `--no-verify` (denied to Claude only in its usual spellings, and the human's escape hatch); an edited or deleted hook file; `core.hooksPath` pointed elsewhere in another config scope (`git config --global`, `--system`, a local `git config` to another folder, an included config file) or through the environment (`GIT_CONFIG_COUNT` with `GIT_CONFIG_KEY_<n>` and `GIT_CONFIG_VALUE_<n>`, `GIT_CONFIG_GLOBAL`); a `-c` override in another capitalization, or in a form the push denies cannot see; and any push that does not go through git, such as `gh api -X DELETE`. Git leaves a branch that `--mirror` (or `remote.<name>.mirror`) deletes out of the hook's input (seen on git 2.39), so the guard never sees that deletion. It reads ancestry from this clone, so it refuses an update over a remote commit the clone has not fetched until the user fetches. A fresh clone has no guard until it runs the setup line. A hook manager that refuses to install while `core.hooksPath` is set (pre-commit, for one) stops reinstalling after the setup line, though the hook it installed before keeps running through the guard. It is `sh`, untested on Windows.
 - **`claude mcp list` cannot prove a connector's scoping:** it prints Claude.ai connectors' URLs without their query strings and does not reliably list every one, so the step-5e scoping check reads the tools and the database instead.
 - **MCP rules keyed to Claude.ai connectors fail open:** those connectors appear in Claude Code under ID prefixes, so a rule keyed to one silently stops matching when the connector is re-added. Rules are keyed only to servers added in Claude Code by name, and re-checked with `/permissions` in a terminal `claude` session after any connector is re-added.

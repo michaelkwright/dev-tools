@@ -14,7 +14,7 @@ Placeholders appear in the body as double-brace UPPER_SNAKE tokens.
   CHANGELOG_WINDOW      Entries kept in CHANGELOG.md before rolling. Default: 50
   LOCAL_TZ              Timezone the suite runs under locally.      Default: America/New_York
   SECOND_TZ             Opposite-side timezone for date-logic runs. Default: Asia/Tokyo
-  TZ_TEST_GREP          Command listing timezone-sensitive tests.   Default: grep -rlE "process\.env\.TZ|setSystemTime|useFakeTimers|toFake|Intl\.DateTimeFormat" <every source and test directory found>;
+  TZ_TEST_GREP          Command listing timezone-sensitive tests.   Default: command grep -rlE "process\.env\.TZ|setSystemTime|useFakeTimers|toFake|Intl\.DateTimeFormat" <every source and test directory found>;
                         when the repo root holds source or test files, "." with --exclude-dir=node_modules --exclude-dir=.git, each build output folder, and --exclude='*.md'
   SCHEDULED_CI_CMD      Latest scheduled CI runs (scheduled-ci).    Default: gh run list --workflow <detected workflow file> --limit 3
   DOC_CONTRACT_LIMITS   The doc-contract limits list.               Default: doc-system skill's reference/limits.md, filled from the test's CONFIG and DOC_CONTRACT_CMD; the doc-contract-limits:start/end markers around it stay (they are not optional-block markers)
@@ -33,7 +33,7 @@ Optional blocks are wrapped in HTML-comment markers BEGIN:<name> and END:<name>.
 -->
 # {{PROJECT_NAME}}: Claude Code Project Context
 
-Seeded from dev-tools @ {{DEV_TOOLS_SHA}} — this file is now the project's own; edit freely.
+Seeded from dev-tools @ {{DEV_TOOLS_SHA}} — this file is now the project's own; edit freely. A later port of dev-tools changes updates this line to the commit ported from.
 
 Read this file in full before changing anything. It covers workflow, gates and failure patterns. `PRODUCT_SPEC.md` is the source of truth for current behavior.
 
@@ -96,6 +96,12 @@ The Gates section's leftover test-runner check applies this rule to test runs.
 <!-- BEGIN:supabase -->
 The Supabase section's connector rule applies it to databases.
 <!-- END:supabase -->
+
+**Every push runs the committed pre-push hook, `.githooks/pre-push`, which refuses force pushes, remote ref deletions and updates over a remote commit this clone lacks. It is switched on per clone: a fresh clone runs `git config core.hooksPath .githooks` once, and a session checks that `git config core.hooksPath` prints `.githooks` before its first push.**
+Why: `core.hooksPath` is clone-local config that git never copies, so a clone without the setup line pushes with no hook and nothing says so.
+
+**Never pass `--no-verify` to git, and never set `core.hooksPath` on git's command line or in any other config scope; that escape hatch is the human's, typed in a terminal.**
+Why: the hook stops mistakes, not a session set on getting around it: `--no-verify`, an edited hook file, `core.hooksPath` in another config scope and config set through the environment all skip it, and `.claude/settings.json` denies only the usual spellings.
 
 **Write a precedent into this file the moment it is confirmed load-bearing, not at session end.**
 Why: conversation history is not repo state, and a lesson left in scrollback is one context compaction away from lost.
@@ -160,7 +166,7 @@ Why: a script nobody deploys still runs through the same tests, and a docs-only 
 Why: a check that passes against its own poison is a statement about the check, not the code.
 
 **In a proof or leak check, call grep as `command grep`, and record `type grep` with the proof.**
-Why: a session shell's `grep` can be a wrapper that honors `.gitignore`, and a recursive search through it skips ignored files, the very files a leak check exists to cover.
+Why: a session shell's `grep` can be a wrapper that honors `.gitignore`: a recursive search through it skips every ignored file, such as `.claude/project-instructions.local.md`, while still reading untracked files and any file named outright, so a leak check passes over exactly the files it exists to cover.
 
 **Run the suite locally under one timezone, `{{LOCAL_TZ}}`; when a change touches date, timezone or calendar-day logic, also run the target files, not the suite, under `{{SECOND_TZ}}`.**
 Why: the second leg is cheap for a handful of files and is the only per-change coverage of the other side of midnight.

@@ -32,7 +32,7 @@ Optional blocks are wrapped in HTML-comment markers BEGIN:<name> and END:<name>.
   connectors        Inside supabase. Keep only when both connectors exist, each scoped to this project, and their names are real answers.
   push-deploys  Under Running in auto mode. Keep only when the user said pushing to the main branch publishes or deploys the app.
   push-safe     Under Running in auto mode. Keep only when the user said it does not; strip both push blocks on an unsure answer.
-  schema-by-hand also has one fact under Running in auto mode, inside that section's supabase block.
+  schema-by-hand and schema-by-claude also have one fact each under Running in auto mode, inside that section's supabase block.
 -->
 # {{PROJECT_NAME}}: Claude Code Project Context
 
@@ -233,8 +233,8 @@ Depth on RLS, column grants, views and definer functions lives in the dev-tools 
 Why: the CLI's migration history conflicts with changes applied by hand, and the push fails; the deny rule is committed so it travels with every clone.
 <!-- END:schema-by-hand -->
 <!-- BEGIN:schema-by-claude -->
-**Claude Code applies schema changes only with the writable connector's `apply_migration`, one migration per change; `supabase db push` is denied at the permission layer (`.claude/settings.json`).**
-Why: the CLI keeps its own migration history, which conflicts with changes applied any other way, and the push fails; the deny rule is committed so it travels with every clone.
+**Claude Code applies schema changes only with the writable connector's `apply_migration`, one migration per change, and an ask rule in `.claude/settings.json` puts each call in front of the user; `supabase db push` is denied at the permission layer.**
+Why: the CLI keeps its own migration history, which conflicts with changes applied any other way, and the push fails; both rules are committed so they travel with every clone, and the ask holds in auto mode too.
 <!-- END:schema-by-claude -->
 <!-- BEGIN:migration-deny -->
 
@@ -291,6 +291,9 @@ Facts:
 <!-- BEGIN:schema-by-hand -->
 - Schema changes are applied by hand, by the user, in the dashboard SQL editor; a session never applies one.
 <!-- END:schema-by-hand -->
+<!-- BEGIN:schema-by-claude -->
+- Schema changes are applied by Claude Code with the writable connector's `apply_migration`, and each one asks the user first; a headless run cannot apply one.
+<!-- END:schema-by-claude -->
 <!-- END:supabase -->
 - Throwaway targets are only the session's scratch directory and whatever the prompt names as throwaway; everything else is real.
 

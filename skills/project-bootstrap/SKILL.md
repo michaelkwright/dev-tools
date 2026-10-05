@@ -41,7 +41,7 @@ Read the target and derive every placeholder default from what is there (each te
 - Scheduled CI: a `.github/workflows/` file with a `schedule:` trigger keeps the `scheduled-ci` block and fills `SCHEDULED_CI_CMD` with that file's name. With none, the block is stripped without asking.
 - Strategy docs: a Markdown file whose name or first heading marks it as strategy, positioning or launch plan (`STRATEGY.md`, `docs/launch-plan.md`, say). Only a found doc lets step 3 offer the `strategy` block; with none, it is stripped without asking.
 - `LOCAL_TZ`: the system timezone, from `node -p 'Intl.DateTimeFormat().resolvedOptions().timeZone'`, else the zone name in `readlink /etc/localtime`. Step 3 only confirms it.
-- Git: whether the target is a repository (`git rev-parse --is-inside-work-tree`), its remotes (`git remote -v`), and anything already uncommitted (`git status --porcelain`), for step 5f and the report's GitHub ruleset line.
+- Git: whether the target is a repository (`git rev-parse --is-inside-work-tree`), its remotes (`git remote -v`), and anything already uncommitted (`git status --porcelain`), for step 5f and the report's GitHub ruleset line. When it is not a repository, whether the folder already holds any files (`ls -A`), for the step-5 existing-files commit.
 - Hooks: an existing pre-push hook, for the step-5c guard merge: `git config core.hooksPath` and the `pre-push` file in the folder it names, a hook manager's config (`.husky/`, `lefthook.yml`, `.pre-commit-config.yaml`), and `.git/hooks/pre-push`.
 - Rulesets, for a private repo with a GitHub remote: `gh api repos/<owner>/<repo>/rulesets --silent`. Exit 0 means they are available; a 403 saying "Upgrade to GitHub Pro or make this repository public" means the plan has none for private repositories; anything else (no `gh`, signed out, a 404) leaves it to step 3.
 - Existing `CLAUDE.md`, `.claude/settings.json`, `.gitignore`, and every doc the doc-system ADOPT inventory names. SEED when none of the doc-system files exist (its seed set; `CLAUDE.md` and a README are not among them); ADOPT otherwise.
@@ -51,7 +51,7 @@ Read the target and derive every placeholder default from what is there (each te
 **When the source sits at the repo root rather than in `src/`, put the contract test where this step found existing tests, else in `test/` at the root; never create a `src/test/` that holds only it.**
 Why: a `src/` holding nothing but a test folder reads as the start of a layout the repo does not have, and the next session puts code there.
 
-**Already bootstrapped** means every piece exists: `CLAUDE.md` with a `Seeded from dev-tools @` line and the limits markers; the doc system (the seed set, or the files its ADOPT mapping named); the contract test; `.claude/settings.json` with the step-5c push denies, plus the `supabase db push` deny if `CLAUDE.md` has a Supabase section; the step-5c push guard (`.githooks/pre-push`, or its stanza in an existing hook); and the `.gitignore` lines. If so, skip steps 3 to 6 and change nothing tracked. Run step 5e with the command recorded in `CLAUDE.md`; when `git config core.hooksPath` in this clone does not name the guard's folder, give the step-5c setup line. Then report "already bootstrapped from dev-tools @ <recorded SHA> (current: <DEV_TOOLS_SHA>); nothing changed" with the 5e results. Never re-seed or update files the project now owns. If only some pieces exist, do only the missing ones. `.claude/project-instructions.local.md` is untracked, so it is not a piece: when it is missing, or the user asks to regenerate it (once the backend or its connectors exist, say), offer step 5d alone, asking only the step-3 questions it needs. A regeneration after the backend or connectors come to exist also offers, each as a shown merge, what the first run held back: `CLAUDE.md`'s `connectors` and `migration-deny` blocks, the step-5c `apply_migration` deny, and the writable connector's step-5c ask rules.
+**Already bootstrapped** means every piece exists: `CLAUDE.md` with a `Seeded from dev-tools @` line and the limits markers; the doc system (the seed set, or the files its ADOPT mapping named); the contract test; `.claude/settings.json` with the step-5c push denies, plus the `supabase db push` deny if `CLAUDE.md` has a Supabase section; the step-5c push guard (`.githooks/pre-push`, or its stanza in an existing hook); and the `.gitignore` lines. If so, skip steps 3 to 6 and change nothing tracked. Run step 5e with the command recorded in `CLAUDE.md`; when `git config core.hooksPath` in this clone does not name the guard's folder, give the step-5c setup line. Then report "already bootstrapped from dev-tools @ <recorded SHA> (current: <DEV_TOOLS_SHA>); nothing changed" with the 5e results. Never re-seed or update files the project now owns. If only some pieces exist, do only the missing ones. `.claude/project-instructions.local.md` is untracked, so it is not a piece: when it is missing, or the user asks to regenerate it (once the backend or its connectors exist, say), offer step 5d alone, asking only the step-3 questions it needs. A regeneration after the backend or connectors come to exist also offers, each as a shown merge, what the first run held back: `CLAUDE.md`'s `connectors` and `migration-deny` blocks, the step-5c `apply_migration` deny or ask, and the writable connector's step-5c ask rules.
 
 ## 3. Ask only what detection can't answer, in one batch
 
@@ -68,7 +68,7 @@ Why: a question the user cannot parse gets a guessed answer, and a guess written
 | "Will that database be Supabase?" | `supabase` block (both templates) | the answer above is yes |
 | "Have you created the Supabase project yet?" With a linked ref found, ask instead: "I found a linked Supabase project, `<ref>`. Is that this app's project?" | whether the project exists: only a yes asks the rows below; anything else takes the no-backend path below | Supabase |
 | "Have you set up this project's two database connectors yet? (One that can only read, added in Claude.ai; one that can also change data, added in Claude Code. Each is tied to this one Supabase project: its address includes `project_ref=` and this project's ID.)" | the no-connectors path below | the project exists |
-| "Will you apply database changes yourself in the Supabase dashboard, or let Claude apply them? (Recommended: yourself.)" | yourself, or no answer: the `schema-by-hand` and `migration-deny` blocks and the step-5c `apply_migration` deny; Claude: the `schema-by-claude` block | the project exists |
+| "Will you apply database changes yourself in the Supabase dashboard, or let Claude apply them? (Recommended: yourself.)" | yourself, or no answer: the `schema-by-hand` and `migration-deny` blocks and the step-5c `apply_migration` deny; Claude: the `schema-by-claude` block and the step-5c `apply_migration` ask | the project exists |
 | "What are their names? And is each one tied to this project only, or can it reach every project in your Supabase account?" | `SUPABASE_RO_CONNECTOR`, `SUPABASE_RW_CONNECTOR`; an account-wide writable one is refused (below) | the connectors exist |
 | "What's the project's ID? It's the short code after `/project/` in the Supabase dashboard's address." | `SUPABASE_PROJECT_REF` | the project exists and no linked ref was found |
 | "Have you signed up in your own app yet? If so, what's your user ID? (Supabase dashboard → Authentication → Users, your row.)" | `OWNER_USER_ID` | the project exists |
@@ -85,7 +85,7 @@ Why: a question the user cannot parse gets a guessed answer, and a guess written
 | "Is the GitHub account that owns the repo on the free plan, or a paid one (Pro, Team or Enterprise)?" | the report's ruleset line (step 5c) | the repo is private, has a GitHub remote, and the rulesets check could not tell |
 | "Does pushing to your main branch publish or deploy your app? (For example, a hosting service that rebuilds the site on every push.)" | yes: the `push-deploys` block and the step-5c push asks; no: the `push-safe` block; not sure: the push asks with both blocks stripped, and the report asks the user to settle it | always |
 | "What's the smallest first piece you want to build?" | the first `ROADMAP.md` epic (step 5b) | always; "not sure yet" is a fine answer |
-| "Save these setup files as a commit when done? (Recommended: yes.)" When step 2 found uncommitted files already there, list them and ask whether the commit includes them too. | step 5f commit | always |
+| "Save these setup files as a commit when done? (Recommended: yes.)" When step 2 found uncommitted files already there, list them and ask whether the commit includes them too. When the folder is not a repository yet but already holds files, add: "This folder already has files in it. On a yes, before setting anything up I'll show you what's here and ask whether to save it as a commit of its own first." | step 5f commit; for a folder that is not a repository and holds files, the step-5 existing-files commit | always |
 
 The `database`, `supabase`, `schema-by-hand` and `schema-by-claude` blocks are in both templates; `scheduled-ci`, `connectors`, `migration-deny`, `push-deploys` and `push-safe` in `CLAUDE.md` only; and `strategy`, `digest`, `llm`, `domain-skill` and `multi-user` in the instructions only. When the schema question is not asked (no Supabase project yet, or a database that is not Supabase), `schema-by-hand` is kept and `schema-by-claude` and `migration-deny` are stripped.
 
@@ -139,7 +139,7 @@ The connector setup, as the report gives it, in plain steps. `<slug>` is the pro
    claude mcp add --transport http supabase-<slug>-rw --scope local "https://mcp.supabase.com/mcp?project_ref=<ref>&features=database,debugging,functions,docs,development"
    ```
 
-   Then, in a Claude Code session started in that folder, run `/mcp`, choose `supabase-<slug>-rw`, and Authenticate. Local scope stores it in `~/.claude.json` under this folder's path: nothing goes into the repo, and sessions in other projects never load it. Never add it at project scope or in Claude.ai. Add it under exactly the name `supabase-<slug>-rw`, or edit the step-5c `apply_migration` deny to the name used.
+   Then, in a Claude Code session started in that folder, run `/mcp`, choose `supabase-<slug>-rw`, and Authenticate. Local scope stores it in `~/.claude.json` under this folder's path: nothing goes into the repo, and sessions in other projects never load it. Never add it at project scope or in Claude.ai. Add it under exactly the name `supabase-<slug>-rw`, or edit the step-5c rules keyed to it (the `apply_migration` deny or ask, and the ask rules) to the name used.
 3. Regenerate the Claude.ai instructions (step 5d alone) with the two names.
 
 Each URL is built by hand from Supabase's parameters: `project_ref=` scopes the server to one project, `read_only=true` runs every query as a read-only database user, and `features=` turns on only the listed tool groups (`development` holds the project URL, keys and type generation, which planning never needs). Never install either through the Supabase dashboard's one-click Claude.ai install or the Claude.ai connector directory: that route hides the URL, so nobody can see what the connector was scoped to.
@@ -158,7 +158,10 @@ Why: the project's existing notes and settings are its own, and a bootstrap that
 - Existing `CLAUDE.md` (this skill governs it, not doc-system ADOPT): the filled template, with the old content kept verbatim under a `## Project Notes` section just before `## Known Failure Patterns`; a leading H1 title is dropped, and the proposal says so. Flag any old note that contradicts a template rule, in the proposal and the report, instead of choosing between them.
 - Existing docs: the doc-system ADOPT mapping, including the `CONFIG` fit, is part of this proposal, since step 5a needs its values.
 - Existing JSON: merged key by key; arrays are unioned; the result must parse.
-- Existing `.gitignore`: the merge only appends lines and changes none, and it is shown and approved like any other. It holds the step-5d line and `.claude/settings.local.json`, plus `node_modules/` and the build output folder when a commit is wanted and they are missing. A new `.gitignore` holds the same lines.
+- Existing `.gitignore`: the merge only appends lines and changes none, and it is shown and approved like any other. It holds the step-5d line and `.claude/settings.local.json`, the secret-file lines below, plus `node_modules/` and the build output folder when a commit is wanted and they are missing. A new `.gitignore` holds the same lines.
+
+**Every `.gitignore` this bootstrap writes or merges keeps secret-bearing files out: `.env*` with `!.env.example` after it, `*.pem` and `*.key`, each added when missing.**
+Why: a key committed once stays in the history after the file is deleted, and a push publishes that history.
 
 **List `.claude/settings.local.json` in the repo's own `.gitignore`, even when this machine already ignores it.**
 Why: the ignore Claude Code relies on can live in a machine-wide git ignore file, which no other machine has, so on another clone the file shows as untracked and its approvals can be committed.
@@ -169,7 +172,26 @@ Why: the ignore Claude Code relies on can live in a machine-wide git ignore file
 **Put every temporary file (a restore copy, a captured output) in the session's scratch directory, or inside the target when there is none, and never beside the target; delete each one inside the target before staging.**
 Why: the target's parent folder may hold other projects, and a file left there is in nobody's repo and nobody cleans it up.
 
-**ADOPT only, before any other write: install the contract test with its approved `CONFIG` (5b's path, and vitest per step 3), then run its template-token check alone, `npx vitest run <test path> -t "template token"`, in the foreground and unpiped. Every token it reports was already there: list each for the user and offer a `CONFIG.templateTokens.allow` entry for it (file, token, and a reason the user gives), never an edit to their text.**
+**A folder that is not a repository yet but already holds files, with a commit wanted (step 3): before any other write, the ADOPT pre-run included, write the whole `.gitignore` (step 4's lines, the step-5d line among them), run `git init`, and only then list what is there.**
+Why: a listing taken before the ignore exists shows `.env` as something to commit, and staging from it commits the secret.
+
+```bash
+git ls-files --others --exclude-standard | wc -l                                          # files to commit
+git ls-files --others --exclude-standard | cut -d/ -f1 | sort | uniq -c                   # top level
+git ls-files --others --ignored --exclude-standard --directory | cut -d/ -f1 | sort -u    # kept out
+```
+
+Tell the user in plain words, without the full file list: how many files would be committed, the top level of the folder (each folder with its file count, each file by name), and each top-level name `.gitignore` keeps out, such as "`.env` is ignored and won't be committed". Add that only files named like secret files are kept out, and nothing checks inside the files for keys. Then ask, with two options: "Commit these existing files as their own first commit (recommended)" or "Leave them uncommitted for now".
+
+- Commit: stage exactly the files listed, by path (`git ls-files -z --others --exclude-standard | xargs -0 git add --`), check with `git status --porcelain` that only those are staged, and commit them as `Existing app files before bootstrap`, with the new `.gitignore`. Bootstrap's own changes then follow as a commit of their own (step 5f), which can be reverted alone.
+- Leave: commit nothing now. Step 5f stages only bootstrap's own files, and the report tells the user in one or two plain sentences that their existing files are untracked: git keeps no history of them, and a push will not upload them until they are committed.
+
+Either way the repository now exists, so step 5c installs the push guard as for any repository. An empty folder skips this step and gets no question; a folder that is already a repository is unchanged.
+
+**Never stage with `git add -A`, `git add .` or `git commit -a`; stage by path.**
+Why: those take every file git sees, so a file the user chose to leave out, or one created during the run, lands in the commit unasked.
+
+**ADOPT only, before any other write but the existing-files step above: install the contract test with its approved `CONFIG` (5b's path, and vitest per step 3), then run its template-token check alone, `npx vitest run <test path> -t "template token"`, in the foreground and unpiped. Every token it reports was already there: list each for the user and offer a `CONFIG.templateTokens.allow` entry for it (file, token, and a reason the user gives), never an edit to their text.**
 Why: a token the project wrote is the project's to fix or keep, and one bootstrap cleared silently could be a value someone meant to fill.
 
 A "not found" failure in that run means only a file 5b seeds next. A token whose allowance the user declines keeps 5e red, and the report names it as theirs to fix.
@@ -215,7 +237,7 @@ Why: a Bash rule matches the command text Claude writes, not the program it runs
 **Install the push guard in every target: `templates/pre-push.tmpl`, filled, as `.githooks/pre-push`, executable and committed, switched on with `git config core.hooksPath .githooks` from the target's folder.**
 Why: the hook runs inside git for every push, whatever command text started it, so it refuses the forms the denies cannot see: `git -C . push --force`, bundled flags such as `-uf`, an alias, a script.
 
-It refuses deleting a remote ref, updating one whose current commit is not an ancestor of the pushed commit, and updating one whose current commit this clone does not have ("fetch first"); a new ref and a fast-forward pass. `core.hooksPath` is per-clone config that git never copies, so the `CLAUDE.md` template carries the setup line for fresh clones and a pre-push check of it. When the target is not a repository yet, the install runs in step 5f after `git init`; with no commit wanted and no repository, the file is written and the report gives `git init` and the setup line to run later.
+It refuses deleting a remote ref, updating one whose current commit is not an ancestor of the pushed commit, and updating one whose current commit this clone does not have ("fetch first"); a new ref and a fast-forward pass. `core.hooksPath` is per-clone config that git never copies, so the `CLAUDE.md` template carries the setup line for fresh clones and a pre-push check of it. When the target is not a repository yet, the install runs after `git init`, in step 5f or in the step-5 existing-files step; with no commit wanted and no repository, the file is written and the report gives `git init` and the setup line to run later.
 
 **When the target already has a pre-push hook, add the guard to it; never replace, move or switch off what is there, and show the merge.**
 Why: the existing hook is the project's own check, and a guard that silently stops it running trades one protection for another.
@@ -255,15 +277,24 @@ With the `migration-deny` block kept (the project exists, and the user applies s
 { "permissions": { "deny": ["mcp__supabase-<slug>-rw__apply_migration"] } }
 ```
 
-When the rule is keyed to the suggested name, the report says to add the writable connector under exactly that name or edit the rule to the name used.
+With the `schema-by-claude` block kept (the project exists, and the user lets Claude apply schema changes), merge in an ask rule for it instead, keyed the same way:
 
-With the project existing, whichever schema answer was given, also merge in ask rules for the writable connector's `execute_sql` and `deploy_edge_function`, keyed to the same name as the deny:
+```json
+{ "permissions": { "ask": ["mcp__supabase-<slug>-rw__apply_migration"] } }
+```
+
+**With the project existing, write the writable connector's `apply_migration` as a deny on the dashboard path and as an ask on the Claude path; never leave it unruled, and never allow it.**
+Why: an unruled call is decided by the auto-mode classifier, so a schema change to the only copy of the production database would run with no one asked; the ask keeps the user in front of each one on the path where Claude applies them.
+
+When a rule is keyed to the suggested name, the report says to add the writable connector under exactly that name or edit the rules to the name used.
+
+With the project existing, whichever schema answer was given, also merge in ask rules for the writable connector's `execute_sql` and `deploy_edge_function`, keyed to the same name as the `apply_migration` rule:
 
 ```json
 { "permissions": { "ask": ["mcp__supabase-<slug>-rw__execute_sql", "mcp__supabase-<slug>-rw__deploy_edge_function"] } }
 ```
 
-**Write the writable connector's `execute_sql` and `deploy_edge_function` as committed ask rules, beside the `apply_migration` deny.**
+**Write the writable connector's `execute_sql` and `deploy_edge_function` as committed ask rules, beside the `apply_migration` rule.**
 Why: in auto mode a classifier, not the user, would otherwise decide each writable-connector call, and an explicit ask rule forces a prompt in every mode, auto included ([permission modes](https://code.claude.com/docs/en/permission-modes), "Eliminate prompts with auto mode").
 
 When pushing to the main branch publishes or deploys the app, or the user is not sure (step 3), also merge in:
@@ -277,7 +308,7 @@ The first matches a bare `git push`, the second a push with arguments. Auto mode
 **List every deny and ask rule this step writes, and only those, in the contract test's `CONFIG.settingsRules` (doc-system's settings ratchet).**
 Why: in auto mode an edit under `.claude/` is judged by the classifier instead of being shown to the user, so a rule deleted there goes unseen until the action it gated runs; the ratchet turns the deletion into a failing doc-contract run. Rules the project wrote itself stay its own to change.
 
-**Write the `apply_migration` deny into the committed `.claude/settings.json`, never `settings.local.json`.**
+**Write the `apply_migration` deny or ask into the committed `.claude/settings.json`, never `settings.local.json`.**
 Why: Claude.ai's per-tool toggles never reach Claude Code, and `/permissions` saves a rule to whichever settings file is picked in its dialog, while "don't ask again" approvals land in `.claude/settings.local.json`, which Claude Code keeps out of git ([permissions docs](https://code.claude.com/docs/en/permissions), "Manage permissions"; [settings docs](https://code.claude.com/docs/en/settings)); only `.claude/settings.json` travels with every clone.
 
 **Key every MCP permission rule to a server added in Claude Code by name, never to a Claude.ai connector, and after re-adding any connector, re-check the rules with `/permissions` in a terminal `claude` session.**
@@ -335,13 +366,13 @@ Why: it prints a Claude.ai connector's URL without its query string, so a scoped
 Why: a committed MCP config hands its server to every session that opens the repo, and a connector that takes a `project_id` reaches every project in the account.
 
 **f. Commit and remote**, per the step-3 answers:
-- Commit yes: run `git init` first if the target is not a repository, install the step-5c push guard if it waited for the repository, stage the files this bootstrap created or merged (plus the already-uncommitted files only if the user said to include them), confirm with `git status` that nothing ignored-worthy (`node_modules/`, build output, `.claude/project-instructions.local.md`, any MCP config naming a Supabase server) is staged, and commit as `Set up the project workflow (dev-tools @ <DEV_TOOLS_SHA>)`.
+- Commit yes: run `git init` first if the target is not a repository yet, install the step-5c push guard if it waited for the repository, stage by path the files this bootstrap created or merged (plus the already-uncommitted files only if the user said to include them; a file bootstrap merged into, such as `package.json`, is committed whole, and when the user left their existing files uncommitted the report names each such file), confirm with `git status` that nothing ignored-worthy (`node_modules/`, build output, `.claude/project-instructions.local.md`, any MCP config naming a Supabase server) is staged, and commit as `Set up the project workflow (dev-tools @ <DEV_TOOLS_SHA>)`.
 - Remote yes: check `gh auth status` first; then `gh repo create <name> --<public|private> --source . --remote origin --push`, and for a private repo run step 2's rulesets check against it for the report's ruleset line. If `gh` is missing or signed out, skip it and say how to do it later.
 
 **Never push without a yes to the step-3 remote question; with an existing remote, leave the push to the user.**
 Why: a push publishes, and for a public repo it cannot be taken back.
 
-**The bootstrap commit follows the session's normal commit attribution settings: it adds no trailer they do not add, and removes none they do.**
+**Every commit this bootstrap makes follows the session's normal commit attribution settings: it adds no trailer they do not add, and removes none they do.**
 Why: attribution is the user's configured choice, and a setup commit that edits it on its own misstates who wrote the commit.
 
 ## 6. Maintainers only: scrub registration
@@ -369,7 +400,7 @@ The report shows the registration's result: each file written or appended, with 
 - Optional blocks kept and stripped, the test path and command, and any `CLAUDE.md` note flagged as contradicting a template rule.
 - `type grep` as this session's shell reports it.
 - Checks: one line for each check this run made, ending `recorded: <the command as CLAUDE.md records it>` when the repo can rerun it, else `bootstrap only`. The doc-contract test is recorded as `DOC_CONTRACT_CMD`, and its template-token check, which runs inside it, gets a line of its own recorded as `DOC_CONTRACT_CMD -t "template token"`; the build is recorded as `BUILD_CMD`. The source pin, the break-and-restore proof, the step-5e `{{`, placeholder, stand-in and layout checks, the Supabase shape checks, the connector checks and the staging check are bootstrap only; an ADOPT's pre-run is the template-token check, so it is recorded.
-- The commit made (its short SHA) or not, and the remote created and pushed or not.
+- The commits made (each short SHA, the existing-files commit first when there is one) or not, any existing files left untracked, and the remote created and pushed or not.
 - Copying the instructions again: the one-line command for this platform with the file's full path (macOS `pbcopy < <path>`; Windows PowerShell `Get-Content -Raw -Encoding utf8 <path> | Set-Clipboard`, untested on Windows; Linux the first of step 5d's three tools that `command -v` finds, even when the user said no there), and where to paste: the Claude.ai Project's custom instructions.
 - Push denies: the forms they stop and every form they cannot catch (Known limits below).
 - Push guard: installed, merged into an existing hook (with the merge shown), or written and waiting for `git init`; that `git config core.hooksPath .githooks` switches it on in each fresh clone; that the human's escape hatch is `git push --no-verify` from a terminal; and that it stops mistakes, not an agent set on getting around it (Known limits below).
@@ -377,7 +408,7 @@ The report shows the registration's result: each file written or appended, with 
 - Connectors, with the supabase block kept:
   - No project yet: only the one line from step 3, and nothing else about connectors.
   - Project exists: each flag from the step-5e connector checks, each scoping check's result (or the message to run it from a chat), the writable connector's local-scope command and both connector URLs from step 3 (the real ref for a private repo, `<ref>` for a public one), and, when the two scoped connectors do not both exist (none yet, or an account-wide writable one refused), the whole connector setup from step 3.
-  - The `apply_migration` deny and the writable connector's ask rules, if written: the name they are keyed to, the keep-this-name line when that name is the suggested one, and the ID-prefix rule from step 5c.
+  - The `apply_migration` deny or ask and the writable connector's ask rules, if written: the name they are keyed to, the keep-this-name line when that name is the suggested one, and the ID-prefix rule from step 5c.
 - Push asks: written or not, per the step-3 push answer; an unsure answer is named for the user to settle.
 - Settings ratchet: the rules listed in `CONFIG.settingsRules`.
 - Roadmap: each item on an existing roadmap that the code already covers, left as the user wrote it (step 5b).
@@ -390,5 +421,6 @@ The report shows the registration's result: each file written or appended, with 
 - **The push guard stops mistakes, not an agent set on getting around it:** it runs only when git runs it, so these pass it: `--no-verify` (denied to Claude only in its usual spellings, and the human's escape hatch); an edited or deleted hook file (in auto mode an edit there is auto-approved, since `.githooks/` is not a protected path); `core.hooksPath` pointed elsewhere in another config scope (`git config --global`, `--system`, a local `git config` to another folder, an included config file) or through the environment (`GIT_CONFIG_COUNT` with `GIT_CONFIG_KEY_<n>` and `GIT_CONFIG_VALUE_<n>`, `GIT_CONFIG_GLOBAL`); a `-c` override in another capitalization, or in a form the push denies cannot see; and any push that does not go through git, such as `gh api -X DELETE`. Git leaves a branch that `--mirror` (or `remote.<name>.mirror`) deletes out of the hook's input (seen on git 2.39), so the guard never sees that deletion. It reads ancestry from this clone, so it refuses an update over a remote commit the clone has not fetched until the user fetches. A fresh clone has no guard until it runs the setup line. A hook manager that refuses to install while `core.hooksPath` is set (pre-commit, for one) stops reinstalling after the setup line, though the hook it installed before keeps running through the guard. It is `sh`, untested on Windows.
 - **Ask rules need someone to answer:** a headless run (`claude -p`) has no prompt to show, so an action an ask rule matches is refused there; a prompt that pushes or calls the writable connector needs the user present.
 - **Headless proofs cannot write into `.claude/`:** it is a protected path, so in Manual or `acceptEdits` mode a `claude -p` child, having no prompt to show, is refused every write there; a proof writes `.claude/settings.json` and the instructions file to scratch copies and runs those files' checks on the copies.
+- **Nothing checks inside existing files for keys:** before the existing-files commit, only the `.gitignore` lines keep secret files out, by name, so a key written into source code is committed with it.
 - **`claude mcp list` cannot prove a connector's scoping:** it prints Claude.ai connectors' URLs without their query strings and does not reliably list every one, so the step-5e scoping check reads the tools and the database instead.
 - **MCP rules keyed to Claude.ai connectors fail open:** those connectors appear in Claude Code under ID prefixes, so a rule keyed to one silently stops matching when the connector is re-added. Rules are keyed only to servers added in Claude Code by name, and re-checked with `/permissions` in a terminal `claude` session after any connector is re-added.

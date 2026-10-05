@@ -19,6 +19,7 @@ const PUSH_DENIES = [
 ];
 const DB_PUSH_DENIES = ["Bash(supabase db push:*)", "Bash(npx supabase db push:*)"];
 const MIGRATION_DENY = ["mcp__supabase-<slug>-rw__apply_migration"];
+const MIGRATION_ASK = ["mcp__supabase-<slug>-rw__apply_migration"];
 const CONNECTOR_ASKS = ["mcp__supabase-<slug>-rw__execute_sql", "mcp__supabase-<slug>-rw__deploy_edge_function"];
 const PUSH_ASKS = ["Bash(git push)", "Bash(git push *)"];
 
@@ -44,17 +45,21 @@ const PROBES = [
     ],
   },
   {
-    probe: "writable-connector asks, apply_migration deny and push asks (stub server)",
-    lastProof: "close-out round, commit 'project-bootstrap: auto-mode setup, settings ratchet, proof policy'",
+    // Two stub servers in one child: one keyed as on the dashboard path
+    // (apply_migration denied), one as on the Claude path (apply_migration
+    // asked), each also allowed server-wide so an ask is seen to beat an allow.
+    probe: "writable-connector asks, apply_migration deny and ask, and push asks (stub servers)",
+    lastProof: "round 6, commit 'project-bootstrap: existing-files commit, apply_migration ask, auto-mode start'",
     deny: MIGRATION_DENY,
-    ask: [...CONNECTOR_ASKS, ...PUSH_ASKS],
+    ask: [...CONNECTOR_ASKS, ...MIGRATION_ASK, ...PUSH_ASKS],
     covered: ["git push", "git push origin main"],
   },
 ];
 
-// Every ```json block in SKILL.md, parsed.
-function jsonBlocks(): { permissions: { deny?: string[]; ask?: string[] } }[] {
-  return [...skill().matchAll(/```json\n([^]*?)\n```/g)].map((m) => JSON.parse(m[1]));
+// Every ```json block in SKILL.md, parsed, with the paragraph that leads into it.
+type Block = { permissions: { deny?: string[]; ask?: string[]; allow?: string[] }; lead: string };
+function jsonBlocks(): Block[] {
+  return [...skill().matchAll(/([^\n]*)\n\n```json\n([^]*?)\n```/g)].map((m) => ({ ...JSON.parse(m[2]), lead: m[1] }));
 }
 const blockWith = (kind: "deny" | "ask", rule: string) =>
   jsonBlocks().filter((b) => b.permissions[kind]?.includes(rule));
@@ -82,6 +87,20 @@ describe("permission rules SKILL.md writes", () => {
 
   it("the apply_migration deny is keyed to the writable connector's name", () => {
     expect(blockWith("deny", MIGRATION_DENY[0])[0]?.permissions.deny).toEqual(MIGRATION_DENY);
+  });
+
+  it("the apply_migration ask is keyed the same way, in a block of its own", () => {
+    expect(blockWith("ask", MIGRATION_ASK[0])[0]?.permissions.ask).toEqual(MIGRATION_ASK);
+  });
+
+  it("apply_migration is denied on the dashboard path and asked on the Claude path, never unruled or allowed", () => {
+    const [deny] = blockWith("deny", MIGRATION_DENY[0]);
+    const [ask] = blockWith("ask", MIGRATION_ASK[0]);
+    expect(deny.lead).toMatch(/^With the `migration-deny` block kept \(the project exists, and the user applies schema changes by hand\)/);
+    expect(ask.lead).toMatch(/^With the `schema-by-claude` block kept \(the project exists, and the user lets Claude apply schema changes\)/);
+    for (const b of jsonBlocks()) expect(JSON.stringify(b.permissions.allow ?? [])).not.toContain("apply_migration");
+    expect(skill()).toContain("**With the project existing, write the writable connector's `apply_migration` as a deny on the dashboard path and as an ask on the Claude path; never leave it unruled, and never allow it.**");
+    expect(skill()).toContain("yourself, or no answer: the `schema-by-hand` and `migration-deny` blocks and the step-5c `apply_migration` deny; Claude: the `schema-by-claude` block and the step-5c `apply_migration` ask");
   });
 
   it("the writable connector's execute_sql and deploy_edge_function are ask rules keyed the same way", () => {
@@ -124,6 +143,11 @@ describe("probe records", () => {
 });
 
 describe("files the bootstrap writes", () => {
+  it(".gitignore keeps secret-bearing files out", () => {
+    expect(skill()).toContain("**Every `.gitignore` this bootstrap writes or merges keeps secret-bearing files out: `.env*` with `!.env.example` after it, `*.pem` and `*.key`, each added when missing.**");
+    expect(skill()).toContain("`.claude/settings.local.json`, the secret-file lines below,");
+  });
+
   it(".gitignore gets .claude/settings.local.json", () => {
     expect(skill()).toContain("**List `.claude/settings.local.json` in the repo's own `.gitignore`, even when this machine already ignores it.**");
     expect(skill()).toContain("It holds the step-5d line and `.claude/settings.local.json`");
@@ -177,5 +201,46 @@ describe("auto-mode lines in the templates", () => {
       "**Every deletion in a prompt names its exact paths, never a pattern or a variable.**",
     ])
       expect(t, line).toContain(line);
+  });
+});
+
+describe("a folder that is not a repository but holds files", () => {
+  const step = () => skill().split("## 5. Write, in this order")[1].split("**a. `CLAUDE.md`**")[0];
+
+  it("writes .gitignore and runs git init before listing, ahead of every other write", () => {
+    const s = step();
+    expect(s).toContain("before any other write, the ADOPT pre-run included, write the whole `.gitignore` (step 4's lines, the step-5d line among them), run `git init`, and only then list what is there.**");
+    expect(s.indexOf("A folder that is not a repository yet")).toBeLessThan(s.indexOf("**ADOPT only"));
+  });
+
+  it("asks the two options, commits existing files first, and stages by path", () => {
+    const s = step();
+    expect(s).toContain('"Commit these existing files as their own first commit (recommended)" or "Leave them uncommitted for now"');
+    expect(s).toContain("commit them as `Existing app files before bootstrap`");
+    expect(s).toContain("**Never stage with `git add -A`, `git add .` or `git commit -a`; stage by path.**");
+    expect(s).toContain("An empty folder skips this step and gets no question; a folder that is already a repository is unchanged.");
+  });
+
+  it("the step-3 commit row and step 5f follow it", () => {
+    expect(skill()).toContain("On a yes, before setting anything up I'll show you what's here and ask whether to save it as a commit of its own first.");
+    expect(skill()).toContain("stage by path the files this bootstrap created or merged");
+  });
+});
+
+describe("GETTING-STARTED", () => {
+  const gs = () => readFileSync(fileURLToPath(new URL("../../../../GETTING-STARTED.md", import.meta.url)), "utf8");
+
+  it("says auto mode may already be the starting mode, and never tells the reader to switch into it", () => {
+    expect(gs()).toContain("In Claude Code v2.1.283 and later, auto mode may already be the mode a session starts in, so check the mode indicator before your first prompt");
+    expect(gs()).not.toContain("You choose auto mode from the mode selector");
+  });
+});
+
+describe("auto-mode lines for the schema paths", () => {
+  it("each schema path has its fact, and the Claude path's says it asks", () => {
+    const t = read("templates/CLAUDE.md.tmpl");
+    expect(t).toContain("<!-- BEGIN:schema-by-claude -->\n- Schema changes are applied by Claude Code with the writable connector's `apply_migration`, and each one asks the user first; a headless run cannot apply one.\n<!-- END:schema-by-claude -->");
+    expect(t).toContain("an ask rule in `.claude/settings.json` puts each call in front of the user");
+    expect(read("templates/claude-ai-project-instructions.md.tmpl")).toContain("`apply_migration`; that call asks the user first, so the prompt is not unattended.**");
   });
 });

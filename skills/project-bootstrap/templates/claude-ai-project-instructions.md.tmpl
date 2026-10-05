@@ -104,7 +104,7 @@ Why: a prompt built on a stale fact builds the wrong thing; mere arithmetic drif
 Why: an unflagged schema change leaves the code shipped ahead of the schema it needs.
 <!-- END:schema-by-hand -->
 <!-- BEGIN:schema-by-claude -->
-**A schema change goes in its own prompt, which tells Claude Code to apply it with the writable connector's `apply_migration`.**
+**A schema change goes in its own prompt, which tells Claude Code to apply it with the writable connector's `apply_migration`; that call asks the user first, so the prompt is not unattended.**
 Why: a schema change folded into a feature prompt is easy to miss, and an unapplied one leaves the code shipped ahead of the schema it needs.
 <!-- END:schema-by-claude -->
 <!-- END:database -->

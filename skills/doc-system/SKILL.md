@@ -39,6 +39,7 @@ Five kinds of document, each answering one question, held to shape by a vitest c
   - `{{CHANGELOG_WINDOW}}`: `CONFIG.limits.changelogWindow`.
   - `{{DOC_CONTRACT_LIMITS}}`: the list from `reference/limits.md` with `CONFIG`'s values and the command above filled in, between the `<!-- doc-contract-limits:start -->` and `<!-- doc-contract-limits:end -->` markers. The test fails when the block and `CONFIG` disagree, so change a limit in both places at once.
 - The template-token check fails any double-brace `UPPER_SNAKE_CASE` token left outside code in the files `CONFIG.templateTokens.files` lists, by file and line. Fit that list to the repo's doc paths along with `CONFIG.paths`. Run the check alone with the command above plus `-t "template token"`.
+- The settings ratchet fails when a permission rule listed in `CONFIG.settingsRules` goes missing from the committed `.claude/settings.json`. Its lists start empty; a setup that writes rules there (the project-bootstrap skill does) lists each one. Run it alone with `-t "settings ratchet"`.
 - Prove it before trusting it: break one file (a Feature Index cell over the cap, say), watch the scoped run fail, restore from a copy and confirm with `diff`.
 
 ## Rules

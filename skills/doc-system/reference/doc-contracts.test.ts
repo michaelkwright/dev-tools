@@ -1,6 +1,7 @@
 // Doc-contract test: enforces the shape of CHANGELOG.md, changelog/,
-// PRODUCT_SPEC.md and the limits block in CLAUDE.md, and that no listed doc
-// keeps an unfilled template token. Node environment, no DOM.
+// PRODUCT_SPEC.md and the limits block in CLAUDE.md, that no listed doc
+// keeps an unfilled template token, and that the committed permission rules
+// CONFIG lists stay in place. Node environment, no DOM.
 // Seeded from dev-tools @ {{DEV_TOOLS_SHA}}; this file is now the project's own.
 //
 // Every project-shaped value lives in CONFIG below. Change CONFIG, not the
@@ -79,6 +80,17 @@ export const CONFIG = {
   templateTokens: {
     files: ["CLAUDE.md", "PRODUCT_SPEC.md", "ROADMAP.md", "CHANGELOG.md", "changelog/"],
     allow: [] as TokenAllowance[],
+  },
+
+  // The settings ratchet: every permission rule listed here must stay in the
+  // committed settings file, a listed ask rule in its ask or deny list. Empty
+  // lists check nothing; a setup that writes rules lists each one. Remove an
+  // entry only in the commit that removes its rule on purpose. Run it alone
+  // with -t "settings ratchet".
+  settingsRules: {
+    file: ".claude/settings.json",
+    deny: [] as string[],
+    ask: [] as string[],
   },
 };
 
@@ -700,6 +712,38 @@ describe("template tokens", () => {
       stale,
       `Template token allowance(s) matching nothing outside code:\n${stale.join("\n")}\n\nA stale ` +
         `allowance widens the rule for nothing; delete it.`,
+    ).toEqual([]);
+  });
+});
+
+// ─── settings ratchet ───────────────────────────────────────────────────────
+//
+// In auto mode an edit under .claude/ is judged by a classifier, not shown to
+// the user, so a deleted rule would go unnoticed until the action it gated ran.
+
+const S = CONFIG.settingsRules;
+
+describe("settings ratchet", () => {
+  it("every listed deny and ask rule is still in the committed settings file", () => {
+    const listed = S.deny.length + S.ask.length;
+    if (listed === 0) return;
+    expect(existsSync(abs(S.file)), `${S.file} not found; CONFIG.settingsRules lists ${listed} rule(s) for it.`).toBe(true);
+    let perms: Record<string, unknown> = {};
+    try {
+      perms = (JSON.parse(read(S.file)) as { permissions?: Record<string, unknown> }).permissions ?? {};
+    } catch (e) {
+      expect.fail(`${S.file} does not parse as JSON: ${(e as Error).message}`);
+    }
+    const list = (kind: string) => (Array.isArray(perms[kind]) ? (perms[kind] as unknown[]) : []);
+    const missing = [
+      ...S.deny.filter((r) => !list("deny").includes(r)).map((r) => `  deny  ${r}`),
+      ...S.ask.filter((r) => !list("ask").includes(r) && !list("deny").includes(r)).map((r) => `  ask   ${r}`),
+    ];
+    expect(
+      missing,
+      `${missing.length} permission rule(s) listed in CONFIG.settingsRules are missing from ` +
+        `${S.file}:\n${missing.join("\n")}\n\nPut each rule back. If one was removed on purpose, ` +
+        `remove its CONFIG entry in the same commit, with the reason in the commit message.`,
     ).toEqual([]);
   });
 });

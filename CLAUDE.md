@@ -82,6 +82,30 @@ Why: it inherits user-level context, including identity details the host injects
 
 ## Proofs
 
+**Prove before pushing: commit locally, run every proof from a detached worktree of that commit, fold any fix into the same unpushed commit, then run the gates once and push once.**
+Why: a proof run after the push can only be answered by a second published commit, and gates run before the last fix vouch for bytes that are never pushed.
+
+**A cold child reads the skill from a scratch clone of this checkout, detached at the local commit, whose `origin` is this checkout.**
+Why: bootstrap's first step requires its commit on `origin`'s default branch, which an unpushed commit meets only against a local origin, and a worktree shares this checkout's real `origin`.
+
+**Prove only what changed: each change names the one case that exercises it, and a round runs one cold case by default; the full case matrix runs only before promotion, or when bootstrap's question flow changes broadly.**
+Why: a cold case costs minutes of subscription usage, and a case that exercises nothing new proves nothing new.
+
+**Deterministic checks belong in `npm test`; an agent proof is only for a judgment call or for Claude Code's permission engine.**
+Why: a scripted check runs in seconds on every commit and gives the same answer each time, while an agent proof is slow and varies run to run.
+
+**Batch probes: one child attempts every form under test, each form against its own throwaway remote or stub, and the verdict is read per form; a probe reruns only when its rule strings change.**
+Why: a child per form multiplies the cost without adding evidence, and a target per form keeps one form's effect from hiding another's.
+
+**Record each probe's last proof beside its rule strings in the skill's contract test: the round, the commit by its subject line, and the forms covered; the test fails when the strings in `SKILL.md` stop matching the recorded ones.**
+Why: that failure is the signal that the probe is due; the strings stand in for a hash of the rule block, and the subject for a commit hash, since a commit cannot hold its own hash and this repo publishes none (Anonymization, above).
+
+**Loop cap: one fix attempt per failed check in a round; the same check failing twice stops the round with a report.**
+Why: a second failure means the fix rests on a wrong model of the problem, and further attempts spend the round guessing.
+
+**A round's report gives the time each phase took.**
+Why: phase times show where the budget went, and which proofs to trim next round.
+
 **In a proof or leak check, call grep as `command grep`, and record `type grep` with the proof, from the shell the proof ran in.**
 Why: a grep that honors `.gitignore` skips ignored files, the very files a leak check exists to cover, and a session shell's `grep` can be that wrapper; a script run under `bash` gets the system grep, because a shell function reaches it only when exported.
 
@@ -94,10 +118,10 @@ Why: a child starts with none of the parent's context, so what it does comes fro
 **Start every child in a clean environment (`env -i` with `HOME`, `PATH`, `USER`, `TMPDIR` and the proof's own variables), never the session's.**
 Why: a host session exports its own session ID, entrypoint, API base URL and similar variables, and a child that inherits them runs as part of that session rather than cold.
 
-**Start every child with `--strict-mcp-config` and an empty MCP config (`--mcp-config '{"mcpServers":{}}'`), and confirm from its init output (`--output-format stream-json --verbose`) that it has no MCP servers and no `mcp__` tools.**
+**Start every child with `--strict-mcp-config` and an empty MCP config (`--mcp-config '{"mcpServers":{}}'`), or for a stub probe a config naming only the stub, and confirm from its init output (`--output-format stream-json --verbose`) that it has no other MCP server and no other `mcp__` tools.**
 Why: otherwise a child loads the account's connectors, and a proof that can reach a real database is neither cold nor safe.
 
-**Give every child an explicit `--allowedTools` list, have it read the skill from the detached proof clone (`--add-dir <clone>`, with `--disable-slash-commands` so the installed copy is not offered), and have it write its report to a file in scratch; record every tool it was refused.**
+**Give every child an explicit `--allowedTools` list, have it read the skill from the proof clone (`--add-dir <clone>`, with `--disable-slash-commands` so the installed copy is not offered), and have it write its report to a file in scratch; record every tool it was refused.**
 Why: with an explicit list each refusal is a recorded fact, the installed skill need not be the commit under test, and a report already in a file survives a child cut off mid-answer.
 
 **Run no child while `ANTHROPIC_API_KEY` or `ANTHROPIC_AUTH_TOKEN` is set: report the cold proofs as not run, and never unset either to get around it.**

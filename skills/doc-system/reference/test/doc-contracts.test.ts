@@ -2,7 +2,8 @@
 // vitest child per case, each in its own temp dir. The fixture is the
 // templates/ seed set filled in, a CLAUDE.md holding the filled limits block,
 // and the reference test at its default path. Cases cover the template-token
-// check; the control case proves the seed itself passes the whole test.
+// check and the settings ratchet; the control case proves the seed itself
+// passes the whole test.
 import { execFile } from "node:child_process";
 import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -156,5 +157,61 @@ describe.concurrent("doc-contract test: template tokens", () => {
     expect(r.out).toMatch(/^\s+CHANGELOG\.md$/m);
     expect(r.out).toMatch(/^\s+changelog\/$/m);
     expect(r.out).not.toMatch(/ENOENT/);
+  });
+});
+
+const RATCHET_ANCHOR = "deny: [] as string[],\n    ask: [] as string[],";
+const DENY = "Bash(supabase db push:*)";
+const ASK = "mcp__supabase-order-desk-rw__execute_sql";
+
+function ratchet(root: string, settings: object | null) {
+  const path = join(root, TEST_PATH);
+  const src = readFileSync(path, "utf8");
+  expect(src.split(RATCHET_ANCHOR).length - 1, "ratchet anchor in the reference test").toBe(1);
+  writeFileSync(path, src.replace(RATCHET_ANCHOR, `deny: ${JSON.stringify([DENY])} as string[],\n    ask: ${JSON.stringify([ASK])} as string[],`));
+  if (settings) {
+    mkdirSync(join(root, ".claude"), { recursive: true });
+    writeFileSync(join(root, ".claude/settings.json"), JSON.stringify(settings, null, 2));
+  }
+}
+
+describe.concurrent("doc-contract test: settings ratchet", () => {
+  it("control: every listed rule present passes", async () => {
+    const root = seed();
+    ratchet(root, { permissions: { deny: [DENY, "Bash(git push*--force*)"], ask: [ASK] } });
+    const r = await run(root, "-t", "settings ratchet");
+    expect(r.out).toMatch(/every listed deny and ask rule is still in the committed settings file/);
+    expect(r.code, r.out).toBe(0);
+  });
+
+  it("a listed ask rule moved to deny passes, since that tightens it", async () => {
+    const root = seed();
+    ratchet(root, { permissions: { deny: [DENY, ASK] } });
+    const r = await run(root, "-t", "settings ratchet");
+    expect(r.code, r.out).toBe(0);
+  });
+
+  it("a missing ask rule fails, naming it", async () => {
+    const root = seed();
+    ratchet(root, { permissions: { deny: [DENY], ask: [] } });
+    const r = await run(root, "-t", "settings ratchet");
+    expect(r.code, r.out).not.toBe(0);
+    expect(r.out).toContain(`ask   ${ASK}`);
+  });
+
+  it("a missing deny rule fails, naming it", async () => {
+    const root = seed();
+    ratchet(root, { permissions: { ask: [ASK] } });
+    const r = await run(root, "-t", "settings ratchet");
+    expect(r.code, r.out).not.toBe(0);
+    expect(r.out).toContain(`deny  ${DENY}`);
+  });
+
+  it("a missing settings file fails when rules are listed", async () => {
+    const root = seed();
+    ratchet(root, null);
+    const r = await run(root, "-t", "settings ratchet");
+    expect(r.code, r.out).not.toBe(0);
+    expect(r.out).toContain(".claude/settings.json not found");
   });
 });

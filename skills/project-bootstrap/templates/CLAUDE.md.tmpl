@@ -15,7 +15,7 @@ Placeholders appear in the body as double-brace UPPER_SNAKE tokens.
   LOCAL_TZ              Timezone the suite runs under locally.      Default: America/New_York
   SECOND_TZ             Opposite-side timezone for date-logic runs. Default: Asia/Tokyo
   TZ_TEST_GREP          Command listing timezone-sensitive tests.   Default: command grep -rlE "process\.env\.TZ|setSystemTime|useFakeTimers|toFake|Intl\.DateTimeFormat" <every source and test directory found>;
-                        when the repo root holds source or test files, "." with --exclude-dir=node_modules --exclude-dir=.git, each build output folder, and --exclude='*.md'
+                        when the repo root holds source or test files other than config files (*.config.*, dotfiles), "." with --exclude-dir=node_modules --exclude-dir=.git, each build output folder, and --exclude='*.md'
   SCHEDULED_CI_CMD      Latest scheduled CI runs (scheduled-ci).    Default: gh run list --workflow <detected workflow file> --limit 3
   DOC_CONTRACT_LIMITS   The doc-contract limits list.               Default: doc-system skill's reference/limits.md, filled from the test's CONFIG and DOC_CONTRACT_CMD; the doc-contract-limits:start/end markers around it stay (they are not optional-block markers)
   SUPABASE_PROJECT_REF  Supabase project ref (supabase block only). Default: $SUPABASE_PROJECT_REF if public or no project yet; else ask
@@ -24,12 +24,15 @@ Placeholders appear in the body as double-brace UPPER_SNAKE tokens.
 
 Optional blocks are wrapped in HTML-comment markers BEGIN:<name> and END:<name>.
   database      Postgres in general. Keep for any Postgres-backed project.
-  supabase      Supabase specifics, plus one cross-link line under Session Workflow. Keep only with the database block, even before the Supabase project exists.
+  supabase      Supabase specifics, plus one cross-link line under Session Workflow and one fact under Running in auto mode. Keep only with the database block, even before the Supabase project exists.
   scheduled-ci  The scheduled-CI pre-flight check. Keep only when a workflow in .github/workflows/ has a schedule trigger.
   schema-by-hand    Inside supabase. Keep unless the user chose to let Claude apply schema changes.
   schema-by-claude  Inside supabase. Keep only when the user chose to let Claude apply schema changes.
   migration-deny    Inside supabase. Keep only when the project exists and schema-by-hand is kept, i.e. when the apply_migration deny is written.
   connectors        Inside supabase. Keep only when both connectors exist, each scoped to this project, and their names are real answers.
+  push-deploys  Under Running in auto mode. Keep only when the user said pushing to the main branch publishes or deploys the app.
+  push-safe     Under Running in auto mode. Keep only when the user said it does not; strip both push blocks on an unsure answer.
+  schema-by-hand also has one fact under Running in auto mode, inside that section's supabase block.
 -->
 # {{PROJECT_NAME}}: Claude Code Project Context
 
@@ -263,6 +266,36 @@ Why: another project's connector answers from its own database, and a result fro
 Why: other projects' connectors appear in every chat and every Claude Code session on the account, so a session sees them all, and only these two answer from this project's database.
 <!-- END:connectors -->
 <!-- END:supabase -->
+
+---
+
+## Running in auto mode
+
+In auto mode a classifier, not the user, approves most actions. It reads this file, so the facts below are written for it as much as for the session.
+
+**`.claude/settings.json`'s deny rules block in every mode, and its ask rules force a prompt in every mode, auto included; a headless run (`claude -p`) has no prompt to show, so it refuses an ask-gated action.**
+Why: those rules are evaluated before the classifier, so they are the only limits that hold whoever approves; a limit stated only in a prompt or a chat is something the classifier weighs, and it can be lost when the context is compacted.
+
+**Never remove or loosen a rule in `.claude/settings.json`; the doc-contract test fails when one the setup wrote goes missing.**
+Why: in auto mode an edit under `.claude/` is judged by the classifier instead of being shown to the user, so a deleted rule would go unseen until the action it gated ran.
+
+Facts:
+<!-- BEGIN:push-deploys -->
+- Pushing to the main branch publishes or deploys the app, so every `git push` asks first.
+<!-- END:push-deploys -->
+<!-- BEGIN:push-safe -->
+- Pushing to the main branch deploys nothing; the push guard still checks every push.
+<!-- END:push-safe -->
+<!-- BEGIN:supabase -->
+- The production database is Supabase project `{{SUPABASE_PROJECT_REF}}`, and there is no other copy of it to experiment on.
+<!-- BEGIN:schema-by-hand -->
+- Schema changes are applied by hand, by the user, in the dashboard SQL editor; a session never applies one.
+<!-- END:schema-by-hand -->
+<!-- END:supabase -->
+- Throwaway targets are only the session's scratch directory and whatever the prompt names as throwaway; everything else is real.
+
+**When auto mode blocks an action, stop that line of work and report the block: the action, what it was for, and the reason shown; never route around it with another command, a script or another tool.**
+Why: a block means the action needs a human's judgment, and a workaround gets the same effect with no one having judged it.
 
 ---
 

@@ -124,6 +124,18 @@ Why: a question costs one message; a wrong prompt costs a build and its rollback
 **Never write a verification step whose success signal is "no dialog appeared"; the human observes dialog behavior directly.**
 Why: Claude Code cannot observe permission dialogs, so their absence in its output proves nothing.
 
+**A hard limit lives in a committed deny or ask rule in `.claude/settings.json`, never only in a prompt's prose; when a prompt needs a new one, the prompt adds the rule.**
+Why: in auto mode a classifier approves most actions, and it weighs prose as context it may lose to compaction, while deny and ask rules are checked before it in every mode.
+
+**Each prompt names its throwaway targets (scratch folders, test copies, stub servers) and asks for any auto-mode blocks in its report.**
+Why: the classifier treats anything not named as throwaway as real, and a block left out of the report is a step that silently did not happen.
+
+**A prompt whose work hits an ask rule (a push that deploys, a writable database call) is not unattended: say so in chat, so the human stays at the keyboard.**
+Why: an ask rule prompts in every mode, auto included, and a run with no one to answer stalls or is refused at that step.
+
+**Every deletion in a prompt names its exact paths, never a pattern or a variable.**
+Why: a pattern or an empty variable can reach far beyond what was meant, and an exact path is one the human and the classifier can both check.
+
 <!-- BEGIN:llm -->
 **Before any prompt that spends the project's pay-as-you-go model API key, state the estimated cost in chat and put a matching spend cap in the prompt.**
 Why: a retry loop can spend far more than the task needs before anyone looks.

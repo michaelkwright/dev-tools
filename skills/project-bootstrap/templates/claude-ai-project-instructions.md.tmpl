@@ -52,7 +52,7 @@ Evaluate every feature against production multi-user scale.
 Why: a Project's repo sync lags even after a manual sync, and search returns repo files only as chunks, while a clone is current to the last push in about a minute.
 - `git clone --depth 1 --filter=blob:none --sparse https://github.com/{{GITHUB_REPO}} <dir>`
 - `git -C <dir> sparse-checkout set --no-cone /CLAUDE.md /ROADMAP.md <newest handoff> <decision records they name>`
-- Find the newest handoff with `git -C <dir> ls-tree --name-only HEAD docs/handoffs/`, and add a file later with `git -C <dir> sparse-checkout add <path>`.
+- The newest handoff is the one in `docs/handoffs/` outside `archive/` (list it with `git -C <dir> ls-tree --name-only HEAD docs/handoffs/`); add a file later with `git -C <dir> sparse-checkout add <path>`.
 - Read files whole. Never edit, commit or push in the clone. State the clone's HEAD beside any fact that depends on it.
 
 **Synced project knowledge, where a Project keeps a repo sync at all, is only for finding which file to read, never the source of a fact; docs uploaded to the Project directly (not synced) are read whole with `project_read`.**

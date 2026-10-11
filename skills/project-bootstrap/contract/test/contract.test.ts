@@ -56,6 +56,31 @@ const PROBES = [
   },
 ];
 
+// Each cold case's last proof and the strings it exercised, in SKILL.md and
+// the instructions template. When one stops matching, the case is due: rerun
+// it, then update its record here in the same commit.
+const COLD_PROOFS = [
+  {
+    case: "a new empty repo with a GitHub https origin, no database, just for the user",
+    lastProof: "round 7, commit 'project-bootstrap: planning chats read the repo by sparse clone; sync is search only'",
+    covered: [
+      "owner/repo detected from an https origin ending in .git",
+      "repo-clone kept and filled, repo-search stripped, no marker lines or unfilled tokens left",
+      "the report's sync line",
+    ],
+    skill: [
+      "git remote get-url origin 2>/dev/null | sed -nE 's#^(https://github\\.com/|git@github\\.com:|ssh://git@github\\.com/)([^/]+/[^/]+)$#\\2#p' | sed 's#\\.git$##'    # GITHUB_REPO",
+      "- A GitHub `origin` (step 2): fill it from origin, and keep `repo-clone`.",
+      "- Repo reading, only when `repo-clone` was kept: \"Planning chats read the repo by cloning it, so linking the GitHub repo to the Claude.ai Project's knowledge is optional and search-only.\"",
+    ],
+    template: [
+      "- `git clone --depth 1 --filter=blob:none --sparse https://github.com/{{GITHUB_REPO}} <dir>`",
+      "<!-- BEGIN:repo-clone -->",
+      "<!-- BEGIN:repo-search -->",
+    ],
+  },
+];
+
 // Every ```json block in SKILL.md, parsed, with the paragraph that leads into it.
 type Block = { permissions: { deny?: string[]; ask?: string[]; allow?: string[] }; lead: string };
 function jsonBlocks(): Block[] {
@@ -139,6 +164,13 @@ describe("probe records", () => {
   it.each(PROBES)("$probe: every covered Bash form matches a recorded rule", ({ deny, ask, covered }) => {
     const bash = [...deny, ...ask].filter((r) => r.startsWith("Bash("));
     for (const cmd of covered) expect(matchesAny(bash, cmd), cmd).toBe(true);
+  });
+});
+
+describe("cold proof records", () => {
+  it.each(COLD_PROOFS)("$case: the strings it exercised still match", ({ skill: lines, template }) => {
+    for (const line of lines) expect(skill(), line).toContain(line);
+    for (const line of template) expect(read("templates/claude-ai-project-instructions.md.tmpl"), line).toContain(line);
   });
 });
 
@@ -234,6 +266,13 @@ describe("GETTING-STARTED", () => {
     expect(gs()).toContain("In Claude Code v2.1.283 and later, auto mode may already be the mode a session starts in, so check the mode indicator before your first prompt");
     expect(gs()).not.toContain("You choose auto mode from the mode selector");
   });
+
+  it("section 4 says linking the repo to the Project is optional and search-only", () => {
+    const s4 = gs().split("## 4. Your first planning chat")[1].split("\n## 5. ")[0];
+    expect(s4).toContain("Planning chats read your repo by cloning it");
+    expect(s4).toContain("So the GitHub repo does not need to be linked to the Project's knowledge, and if you link it anyway, the chat uses it only for search.");
+    expect(s4).toContain("A planning chat needs the repo tool to make that copy");
+  });
 });
 
 describe("auto-mode lines for the schema paths", () => {
@@ -242,5 +281,50 @@ describe("auto-mode lines for the schema paths", () => {
     expect(t).toContain("<!-- BEGIN:schema-by-claude -->\n- Schema changes are applied by Claude Code with the writable connector's `apply_migration`, and each one asks the user first; a headless run cannot apply one.\n<!-- END:schema-by-claude -->");
     expect(t).toContain("an ask rule in `.claude/settings.json` puts each call in front of the user");
     expect(read("templates/claude-ai-project-instructions.md.tmpl")).toContain("`apply_migration`; that call asks the user first, so the prompt is not unattended.**");
+  });
+});
+
+describe("planning chats read the repo by sparse clone", () => {
+  const tmpl = () => read("templates/claude-ai-project-instructions.md.tmpl");
+  const block = (name: string) => tmpl().split(`<!-- BEGIN:${name} -->`)[1]?.split(`<!-- END:${name} -->`)[0] ?? "";
+
+  it("the template holds both blocks, and TEMPLATE NOTES documents GITHUB_REPO and both", () => {
+    const t = tmpl();
+    for (const m of ["<!-- BEGIN:repo-clone -->", "<!-- END:repo-clone -->", "<!-- BEGIN:repo-search -->", "<!-- END:repo-search -->"])
+      expect(t.split(m), m).toHaveLength(2);
+    const notes = t.split("-->")[0];
+    expect(notes).toMatch(/\n {2}GITHUB_REPO +GitHub owner\/repo \(repo-clone block\)\. +Default: detected from origin; see step 5d\n/);
+    expect(notes).toMatch(/\n {2}repo-clone +Keep when the repo has a GitHub remote, or step 5f will create one/);
+    expect(notes).toContain("exactly one of repo-clone and repo-search is kept");
+    expect(notes).toMatch(/\n {2}repo-search +Keep only when repo-clone is stripped\.\n/);
+    expect(block("repo-search")).toContain("**Search project knowledge before asserting feature state or canonical values.**\nWhy: repo docs arrive as searched chunks, so a fact not retrieved is a fact not known.");
+    expect(block("repo-search")).not.toContain("git clone");
+  });
+
+  it("repo-clone holds both sparse-clone commands and forbids writes in the clone", () => {
+    const b = block("repo-clone");
+    expect(b).toContain("attach `{{GITHUB_REPO}}` read-only with the repo tool (`add_repo`, access `read`)");
+    expect(b).toContain("`git clone --depth 1 --filter=blob:none --sparse https://github.com/{{GITHUB_REPO}} <dir>`");
+    expect(b).toContain("`git -C <dir> sparse-checkout set --no-cone /CLAUDE.md /ROADMAP.md <newest handoff> <decision records they name>`");
+    expect(b).toContain("Never edit, commit or push in the clone.");
+    expect(b).toContain("State the clone's HEAD beside any fact that depends on it.");
+    expect(tmpl()).toContain("**Never assert a current version, count or live value from any copy of the repo, synced or cloned; prompts tell Claude Code to read live files before anything builds on them.**");
+  });
+
+  it("SKILL.md step 5d names all three GITHUB_REPO paths, and step 7 the sync line", () => {
+    const d = skill().split("**d. The Claude.ai instructions**")[1].split("**e. Run the scoped doc-contract command**")[0];
+    expect(d).toContain("- A GitHub `origin` (step 2): fill it from origin, and keep `repo-clone`.");
+    expect(d).toContain("- No remote, but a yes to the step-3 remote question: fill it as `<login>/<name>`, with the repo name that question settled and the login `gh api user --jq .login` reports, and keep `repo-clone`.");
+    expect(d).toContain("If that command fails, strip `repo-clone`, keep `repo-search`, and have the report say to regenerate step 5d alone once the remote exists.");
+    expect(d).toContain("- No GitHub remote, and none to be created: keep `repo-search`.");
+    expect(skill().split("## 7. Report")[1]).toContain("- Repo reading, only when `repo-clone` was kept: \"Planning chats read the repo by cloning it, so linking the GitHub repo to the Claude.ai Project's knowledge is optional and search-only.\"");
+  });
+
+  it("kickoff-chat.md reads the toolkit by sparse clone, not web access", () => {
+    const k = read("templates/kickoff-chat.md");
+    expect(k).not.toContain("turn on web access");
+    expect(k).toContain("attach `michaelkwright/dev-tools` read-only with the repo tool (`add_repo`, access `read`) and sparse-clone only `README.md`, `GETTING-STARTED.md` and `skills/project-bootstrap/`");
+    expect(k).toContain("--filter=blob:none --sparse");
+    expect(k).toContain("If this chat has no repo tool, ask me to paste the README.");
   });
 });

@@ -42,6 +42,11 @@ Read the target and derive every placeholder default from what is there (each te
 - Strategy docs: a Markdown file whose name or first heading marks it as strategy, positioning or launch plan (`STRATEGY.md`, `docs/launch-plan.md`, say). Only a found doc lets step 3 offer the `strategy` block; with none, it is stripped without asking.
 - `LOCAL_TZ`: the system timezone, from `node -p 'Intl.DateTimeFormat().resolvedOptions().timeZone'`, else the zone name in `readlink /etc/localtime`. Step 3 only confirms it.
 - Git: whether the target is a repository (`git rev-parse --is-inside-work-tree`), its remotes (`git remote -v`), and anything already uncommitted (`git status --porcelain`), for step 5f and the report's GitHub ruleset line. When it is not a repository, whether the folder already holds any files (`ls -A`), for the step-5 existing-files commit.
+  - `GITHUB_REPO`: when `origin` is a GitHub URL, its `owner/repo`, from the https form (`https://github.com/<owner>/<repo>`) or the ssh forms (`git@github.com:<owner>/<repo>`, `ssh://git@github.com/<owner>/<repo>`), with or without `.git`; empty for any other origin, or none. Step 5d uses it.
+
+    ```bash
+    git remote get-url origin 2>/dev/null | sed -nE 's#^(https://github\.com/|git@github\.com:|ssh://git@github\.com/)([^/]+/[^/]+)$#\2#p' | sed 's#\.git$##'    # GITHUB_REPO
+    ```
 - Hooks: an existing pre-push hook, for the step-5c guard merge: `git config core.hooksPath` and the `pre-push` file in the folder it names, a hook manager's config (`.husky/`, `lefthook.yml`, `.pre-commit-config.yaml`), and `.git/hooks/pre-push`.
 - Rulesets, for a private repo with a GitHub remote: `gh api repos/<owner>/<repo>/rulesets --silent`. Exit 0 means they are available; a 403 saying "Upgrade to GitHub Pro or make this repository public" means the plan has none for private repositories; anything else (no `gh`, signed out, a 404) leaves it to step 3.
 - Existing `CLAUDE.md`, `.claude/settings.json`, `.gitignore`, and every doc the doc-system ADOPT inventory names. SEED when none of the doc-system files exist (its seed set; `CLAUDE.md` and a README are not among them); ADOPT otherwise.
@@ -87,7 +92,7 @@ Why: a question the user cannot parse gets a guessed answer, and a guess written
 | "What's the smallest first piece you want to build?" | the first `ROADMAP.md` epic (step 5b) | always; "not sure yet" is a fine answer |
 | "Save these setup files as a commit when done? (Recommended: yes.)" When step 2 found uncommitted files already there, list them and ask whether the commit includes them too. When the folder is not a repository yet but already holds files, add: "This folder already has files in it. On a yes, before setting anything up I'll show you what's here and ask whether to save it as a commit of its own first." | step 5f commit; for a folder that is not a repository and holds files, the step-5 existing-files commit | always |
 
-The `database`, `supabase`, `schema-by-hand` and `schema-by-claude` blocks are in both templates; `scheduled-ci`, `connectors`, `migration-deny`, `push-deploys` and `push-safe` in `CLAUDE.md` only; and `strategy`, `digest`, `llm`, `domain-skill` and `multi-user` in the instructions only. When the schema question is not asked (no Supabase project yet, or a database that is not Supabase), `schema-by-hand` is kept and `schema-by-claude` and `migration-deny` are stripped.
+The `database`, `supabase`, `schema-by-hand` and `schema-by-claude` blocks are in both templates; `scheduled-ci`, `connectors`, `migration-deny`, `push-deploys` and `push-safe` in `CLAUDE.md` only; and `strategy`, `digest`, `llm`, `domain-skill`, `multi-user`, `repo-clone` and `repo-search` in the instructions only. When the schema question is not asked (no Supabase project yet, or a database that is not Supabase), `schema-by-hand` is kept and `schema-by-claude` and `migration-deny` are stripped.
 
 **Ask the rows that need an existing Supabase project (the connectors, their names, the schema question, the project's ID, the user ID) only once the user has said the project exists: as a follow-up to the batch, never as conditional sub-questions inside it. A linked ref found in step 2 makes the confirmation itself a batch row, and the rest follow it.**
 Why: a question shown before the project exists invites a guessed answer, and the no-backend path below asks nothing more about the project.
@@ -316,6 +321,13 @@ Why: Claude.ai connectors appear in Claude Code under ID prefixes (`mcp__claude_
 
 **d. The Claude.ai instructions**: fill `templates/claude-ai-project-instructions.md.tmpl` the same way (placeholders, blocks, marker lines, TEMPLATE NOTES, the checks below). Write it to `.claude/project-instructions.local.md`, which is never committed and so may hold the real ref and IDs, and add that exact path to `.gitignore`.
 
+Fill `GITHUB_REPO`, and keep exactly one of `repo-clone` and `repo-search`, by case:
+- A GitHub `origin` (step 2): fill it from origin, and keep `repo-clone`.
+- No remote, but a yes to the step-3 remote question: fill it as `<login>/<name>`, with the repo name that question settled and the login `gh api user --jq .login` reports, and keep `repo-clone`. If that command fails, strip `repo-clone`, keep `repo-search`, and have the report say to regenerate step 5d alone once the remote exists.
+- No GitHub remote, and none to be created: keep `repo-search`.
+
+The `owner/repo` is never guessed (step 3's no-invented-value rule): a login or name not read from origin, `gh` or the user's answer means the `repo-search` path.
+
 Then ask "Copy the Claude.ai instructions to your clipboard now?". On a yes, copy the file with the platform's clipboard command and read its exit code: macOS `pbcopy < <file>`; Windows, in PowerShell, `Get-Content -Raw -Encoding utf8 <file> | Set-Clipboard` (`clip` garbles non-ASCII text, and this command is untested on Windows); Linux `wl-copy < <file>`, else `xclip -selection clipboard < <file>`, else `xsel --clipboard < <file>`. If no clipboard tool exists, say so and print the file's contents in the session instead.
 
 **The instructions file stays at `.claude/project-instructions.local.md`, and its contents never go into any committed file.**
@@ -405,6 +417,7 @@ The report shows the registration's result: each file written or appended, with 
 - Push denies: the forms they stop and every form they cannot catch (Known limits below).
 - Push guard: installed, merged into an existing hook (with the merge shown), or written and waiting for `git init`; that `git config core.hooksPath .githooks` switches it on in each fresh clone; that the human's escape hatch is `git push --no-verify` from a terminal; and that it stops mistakes, not an agent set on getting around it (Known limits below).
 - The ruleset line from step 5c, for the case that applies.
+- Repo reading, only when `repo-clone` was kept: "Planning chats read the repo by cloning it, so linking the GitHub repo to the Claude.ai Project's knowledge is optional and search-only."
 - Connectors, with the supabase block kept:
   - No project yet: only the one line from step 3, and nothing else about connectors.
   - Project exists: each flag from the step-5e connector checks, each scoping check's result (or the message to run it from a chat), the writable connector's local-scope command and both connector URLs from step 3 (the real ref for a private repo, `<ref>` for a public one), and, when the two scoped connectors do not both exist (none yet, or an account-wide writable one refused), the whole connector setup from step 3.
@@ -412,7 +425,7 @@ The report shows the registration's result: each file written or appended, with 
 - Push asks: written or not, per the step-3 push answer; an unsure answer is named for the user to settle.
 - Settings ratchet: the rules listed in `CONFIG.settingsRules`.
 - Roadmap: each item on an existing roadmap that the code already covers, left as the user wrote it (step 5b).
-- Left for the user: paste the instructions as above, then start a fresh planning chat; apply any schema steps by hand, unless they chose to let Claude apply them; each command written as `NOT SET UP YET`, with what to add; replace the example epic in `ROADMAP.md`, if it was kept; after an ADOPT, describe the existing features in the spec; the step-3 one-line pointer, if there was no backend, or "regenerate the Claude.ai instructions after the connectors exist", if the backend exists without them; push, if a remote existed.
+- Left for the user: paste the instructions as above, then start a fresh planning chat; regenerate step 5d alone once the remote exists, if step 5d could not read the GitHub login; apply any schema steps by hand, unless they chose to let Claude apply them; each command written as `NOT SET UP YET`, with what to add; replace the example epic in `ROADMAP.md`, if it was kept; after an ADOPT, describe the existing features in the spec; the step-3 one-line pointer, if there was no backend, or "regenerate the Claude.ai instructions after the connectors exist", if the backend exists without them; push, if a remote existed.
 - CI templates are not yet part of this skill.
 
 ## Known limits

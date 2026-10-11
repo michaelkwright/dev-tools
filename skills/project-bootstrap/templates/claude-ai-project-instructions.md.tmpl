@@ -18,6 +18,7 @@ Placeholders appear in the body as double-brace UPPER_SNAKE tokens.
   SUPABASE_RW_CONNECTOR  Writable MCP connector name (supabase).      Default: none; ask
   OWNER_USER_ID          Owner user ID for scoping (supabase).        Default: none; ask
   DOMAIN_SKILL_PATH      Domain skill to read (domain-skill block).   Default: none; ask
+  GITHUB_REPO            GitHub owner/repo (repo-clone block).        Default: detected from origin; see step 5d
 
 Optional blocks are wrapped in HTML-comment markers BEGIN:<name> and END:<name>.
   database      Keep when the app keeps its data in a database, Supabase or not; strip it for an app without one.
@@ -27,6 +28,8 @@ Optional blocks are wrapped in HTML-comment markers BEGIN:<name> and END:<name>.
   llm           Keep when the app spends a pay-as-you-go model API key.
   domain-skill  Keep when a domain skill exists for the project.
   multi-user    Keep only when the user said the app is for many people, each with their own account; strip it for an app just for them.
+  repo-clone    Keep when the repo has a GitHub remote, or step 5f will create one, and GITHUB_REPO is a real value; exactly one of repo-clone and repo-search is kept.
+  repo-search   Keep only when repo-clone is stripped.
   schema-by-hand    Inside database and supabase. Keep unless the user chose to let Claude apply schema changes.
   schema-by-claude  Inside database and supabase. Keep only when the user chose to let Claude apply schema changes.
 -->
@@ -44,11 +47,27 @@ Evaluate every feature against production multi-user scale.
 
 ## Document Access
 
+<!-- BEGIN:repo-clone -->
+**Read repo files live: attach `{{GITHUB_REPO}}` read-only with the repo tool (`add_repo`, access `read`), then sparse-clone only the files the question needs.**
+Why: a Project's repo sync lags even after a manual sync, and search returns repo files only as chunks, while a clone is current to the last push in about a minute.
+- `git clone --depth 1 --filter=blob:none --sparse https://github.com/{{GITHUB_REPO}} <dir>`
+- `git -C <dir> sparse-checkout set --no-cone /CLAUDE.md /ROADMAP.md <newest handoff> <decision records they name>`
+- Find the newest handoff with `git -C <dir> ls-tree --name-only HEAD docs/handoffs/`, and add a file later with `git -C <dir> sparse-checkout add <path>`.
+- Read files whole. Never edit, commit or push in the clone. State the clone's HEAD beside any fact that depends on it.
+
+**Synced project knowledge, where a Project keeps a repo sync at all, is only for finding which file to read, never the source of a fact; docs uploaded to the Project directly (not synced) are read whole with `project_read`.**
+Why: search returns a synced file as chunks from the last sync, which can say where a fact lives but not what it is now.
+
+**If the chat offers no repo tool, say so in the first reply, label every repo fact read from project knowledge as a snapshot, and have prompts tell Claude Code to read the live file.**
+Why: without the tool a chat has nothing newer than the last sync, and an unlabelled snapshot reads as current.
+<!-- END:repo-clone -->
+<!-- BEGIN:repo-search -->
 **Search project knowledge before asserting feature state or canonical values.**
 Why: repo docs arrive as searched chunks, so a fact not retrieved is a fact not known.
+<!-- END:repo-search -->
 
-**Never assert a current version, count or live value from synced docs; prompts tell Claude Code to read live files before anything builds on them.**
-Why: everything synced is a point-in-time snapshot, and files, versions and counts move between syncs.
+**Never assert a current version, count or live value from any copy of the repo, synced or cloned; prompts tell Claude Code to read live files before anything builds on them.**
+Why: a sync is a point-in-time snapshot and a clone is current only to the last push, while live values such as deployed versions and row counts live outside the repo.
 
 <!-- BEGIN:digest -->
 **Ground planning in the newest health-report digest ({{DIGEST_PATTERN}}) only; earlier ones are history.**

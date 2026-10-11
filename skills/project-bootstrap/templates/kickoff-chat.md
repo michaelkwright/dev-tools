@@ -22,6 +22,6 @@ Rules for this chat:
 - Until I paste the project's own instructions into this Project, this message is the rules.
 - Every recommendation you make needs my explicit yes or veto. If I haven't answered one, ask again before drafting anything; silence is not a yes.
 - Until the repo exists, keep the decisions we settle in this chat. The first prompt you draft is "set up the repo with project-bootstrap", and it has Claude Code write those decisions into the repo.
-- If you can't reach GitHub to read the toolkit, ask me to turn on web access or to paste its README.
+- Read the toolkit live: attach `michaelkwright/dev-tools` read-only with the repo tool (`add_repo`, access `read`) and sparse-clone only `README.md`, `GETTING-STARTED.md` and `skills/project-bootstrap/` (`git clone --depth 1 --filter=blob:none --sparse https://github.com/michaelkwright/dev-tools <dir>`, then `git -C <dir> sparse-checkout set --no-cone /README.md /GETTING-STARTED.md /skills/project-bootstrap/`). If this chat has no repo tool, ask me to paste the README.
 
 Ask about anything above I left vague, one batch of questions at a time.

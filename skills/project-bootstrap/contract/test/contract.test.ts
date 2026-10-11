@@ -238,8 +238,11 @@ describe("auto-mode lines in the templates", () => {
       "**Each prompt names its throwaway targets (scratch folders, test copies, stub servers) and asks for any auto-mode blocks in its report.**",
       "**A prompt whose work hits an ask rule (a push that deploys, a writable database call) is not unattended:",
       "**Every deletion in a prompt names its exact paths, never a pattern or a variable.**",
+      "Never ask a prompt for more test runs than CLAUDE.md allows",
+      "Settle a design fork yourself",
     ])
       expect(t, line).toContain(line);
+    expect(t).not.toContain("Settle decisions conversationally");
   });
 });
 

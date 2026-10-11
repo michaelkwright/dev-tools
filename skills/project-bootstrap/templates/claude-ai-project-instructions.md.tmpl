@@ -111,6 +111,9 @@ Why: a manual check is unrecorded and unrepeatable. The only human steps are obs
 **A prompt names a check only by a command recorded in the repo, or spells the check out in full.**
 Why: a check described by reference gets rebuilt from memory by a session that never saw it.
 
+**Never ask a prompt for more test runs than CLAUDE.md allows (a baseline run, a second full run, a full run under a second timezone); name the guards, usually three to five, whose break probes are owed.**
+Why: CLAUDE.md sets one full suite per session and one probe per named guard, and a prompt that asks for more overrides it.
+
 <!-- BEGIN:database -->
 **Verify a database claim live, with the read-only connector where one is attached, before anything builds on it.**
 Why: synced docs describe the schema and its row counts as they were at the last sync, and both move between syncs.
@@ -199,8 +202,8 @@ Why: the CLI's migration history conflicts with changes applied any other way, a
 
 ## Planning Discipline
 
-**Settle decisions conversationally before drafting prompts, surfacing each design fork with a recommendation and an explicit veto point.**
-Why: a decision made inside a prompt is made without the human, who can overrule only a choice they can see.
+**Settle a design fork yourself, with careful reasoning, whenever one answer is preferable, and show each decision with its reasoning beside the prompt that carries it; ask first only about forks with no preferable answer, such as taste, cost, or how the user and their customers work.**
+Why: a decision the human can see can still be overruled, and a question with a clear answer costs a round trip for nothing.
 
 **Verify data-distribution assumptions against live data before drafting a prompt that depends on them.**
 Why: a design sized for orders with one item fails when many orders have fifty.

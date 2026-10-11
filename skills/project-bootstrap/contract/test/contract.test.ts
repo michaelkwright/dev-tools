@@ -224,6 +224,13 @@ describe("auto-mode lines in the templates", () => {
       expect(t, line).toContain(line);
   });
 
+  it("CLAUDE.md template: the run budget", () => {
+    const t = read("templates/CLAUDE.md.tmpl");
+    expect(t).toContain("The full suite runs once per session");
+    expect(t).toContain("a full run under `{{SECOND_TZ}}`");
+    expect(t).toContain("more than eight in a session needs a one-line reason");
+  });
+
   it("instructions template: the prompt-drafting lines", () => {
     const t = read("templates/claude-ai-project-instructions.md.tmpl");
     for (const line of [

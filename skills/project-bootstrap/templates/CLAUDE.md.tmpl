@@ -159,6 +159,12 @@ Why: a match by runner name alone also catches another project's run, which is n
 **Session order: implement → scoped runs (`{{SCOPED_TEST_CMD}}`) → break probes observed failing on scoped runs → restore by copy and confirm with `diff` → spec-update protocol → scoped doc contracts → one `{{BUILD_CMD}}` → one full suite on the final bytes.**
 Why: the single full run on the committed bytes proves everything an earlier full run would, at a fraction of the cost.
 
+**The full suite runs once per session, as the last gate on the final bytes. Banned: a baseline run on the untouched tree, a run before the break probes, a run before a push that is not the final gate, and a full run under `{{SECOND_TZ}}`. If the one run fails on a test the change does not touch, run that test's file alone once; if it passes alone, report it as load-sensitive with both timings and run the full suite one more time, at most, and never raise a timeout to get past it.**
+Why: every full run before the last proves nothing the last one does not, and a raised timeout hides a real slowdown.
+
+**Break probes: one per guard the prompt names, plus any guard the session judges would fail silently, each observed failing on a scoped run of the touched file. A probe that changes no behavior is reported as meaningless, not counted, and more than eight in a session needs a one-line reason in the report.**
+Why: a probe count is not evidence; a named guard seen failing is.
+
 **Restore a break probe from a copy made before the break, confirm the restore with `diff`, and never restore with `git checkout`.**
 Why: checkout discards every uncommitted change in the file, not just the break, and an unconfirmed restore may be incomplete.
 

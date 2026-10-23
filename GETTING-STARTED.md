@@ -138,6 +138,39 @@ Connectors you add in Claude.ai, from every project, show up in every chat and e
 
 Never add the writable one in Claude.ai, or with `--scope project`, and never use one that reaches every project in your account. Supabase's own guide shows `--scope project`, which writes a `.mcp.json` file into your repo; once committed, that file hands the writable connector to every session that opens the repo, on every computer that clones it.
 
+### CLI token (only if Claude Code will run the Supabase CLI)
+
+The Supabase CLI (the `supabase` command, used for deploys and generated types) needs its own **CLI token**. Give each project its own, limited to that project, and keep it outside the repo, where Claude Code is blocked from reading it. Do these steps yourself; Claude Code never handles the token. Below, `order-desk` stands for your project's folder name.
+
+1. In the Supabase dashboard, create an access token limited to this one project, with only the permissions it needs ([Supabase's access tokens](https://supabase.com/docs/guides/platform/personal-access-tokens)). Copy it.
+2. Save it in a file of its own, and make the file readable only by you:
+
+   ```bash
+   mkdir -p ~/.config/order-desk
+   ```
+
+   Paste the token into `~/.config/order-desk/supabase-token` with any text editor, then:
+
+   ```bash
+   chmod 600 ~/.config/order-desk/supabase-token
+   ```
+
+3. Add the shell snippet from [`skills/project-bootstrap/reference/conventions.md`](skills/project-bootstrap/reference/conventions.md) (section 1) to your shell profile (`~/.zshrc` on a Mac, `~/.bashrc` on Linux), with your folder name in place of `<slug>`. It loads the token only in terminals opened in that project's folder.
+4. Check the profile for typing mistakes; this prints nothing when it is fine. For `~/.bashrc`:
+
+   ```bash
+   bash -n ~/.bashrc
+   ```
+
+   For `~/.zshrc`, run `zsh -n ~/.zshrc` instead.
+
+5. Open a new terminal in the project's folder, so the profile runs again.
+6. Sign the CLI out of your account, so it can only use the project's token:
+
+   ```bash
+   supabase logout
+   ```
+
 ## 8. Running more than one project
 
 - Give each project its own folder, and start Claude Code in that project's own folder. A session works on the folder it starts in, and a writable connector added with `--scope local` loads only there.
@@ -166,5 +199,6 @@ For Supabase users:
 
 - **Project ref**: the short code naming your Supabase project, seen in its dashboard address after `/project/`. It isn't a password, but a public repo shouldn't hold it.
 - **Owner user ID**: your own account's ID in your app (dashboard: Authentication > Users). The planning chat uses it to count just your data.
+- **CLI token**: a password-like code the Supabase command line tool uses to reach one project. It lives in a file in `~/.config/`, outside your repo, and your terminal loads it only in that project's folder (section 7).
 - **Read-only vs writable connector**: the two links between Claude and one Supabase project (section 7). The read-only one, in Claude.ai, can look but not change data; the writable one, in Claude Code only, can change data and is kept for Claude Code's careful, undone-afterwards checks. The planning chat uses only the read-only one.
 - **Why schema changes are applied by hand**: you paste them into the dashboard's SQL editor yourself. Supabase's push command keeps its own history that conflicts with hand-applied changes, so Claude Code is blocked from running it.

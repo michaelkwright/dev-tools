@@ -5,7 +5,7 @@ description: Use to set up the planning → Claude Code workflow in a new repo, 
 
 # Project bootstrap
 
-Seeds a repo with a `CLAUDE.md`, the doc system and its contract test, committed permission rules, a pre-push guard, and the Claude.ai planning instructions. The rules live in the templates and in the doc-system skill; this file only sequences them. "The target" below is the repo being bootstrapped; "dev-tools" is the checkout this skill lives in.
+Seeds a repo with a `CLAUDE.md`, the doc system and its contract test, committed permission rules, a pre-push guard, a session-start check, and the Claude.ai planning instructions. The rules live in the templates and in the doc-system skill; this file only sequences them, and [`reference/conventions.md`](reference/conventions.md) indexes the conventions every bootstrapped repo shares. "The target" below is the repo being bootstrapped; "dev-tools" is the checkout this skill lives in.
 
 The first planning chat, before this skill runs, can open with [`templates/kickoff-chat.md`](templates/kickoff-chat.md): it settles in conversation the answers step 3 asks for.
 
@@ -26,7 +26,7 @@ Why: every seeded file records `DEV_TOOLS_SHA`, which must name content anyone c
 
 A checkout pinned to a commit has a detached HEAD and no upstream; that is expected, and it passes as long as the commit is on the default branch.
 
-Read every template from this checkout: `templates/` next to this file, and `skills/doc-system/` (its `SKILL.md`, `templates/`, `reference/`).
+Read every template from this checkout: `templates/` next to this file, `reference/conventions.md`, and `skills/doc-system/` (its `SKILL.md`, `templates/`, `reference/`).
 
 ## 2. Detect before asking
 
@@ -71,6 +71,7 @@ Why: a question the user cannot parse gets a guessed answer, and a guess written
 | "What must be true before launch? (For example: no user can ever see another user's data.)" | `LAUNCH_BLOCKERS`, without a closing full stop | always |
 | "Will the app keep its data in a database?" | `database` block (both templates) | always; suggest yes when `supabase/` exists |
 | "Will that database be Supabase?" | `supabase` block (both templates) | the answer above is yes |
+| "Will Claude Code run the Supabase CLI (deploys, generated types)? If so, this setup expects the CLI token at `~/.config/<slug>/supabase-token`, loaded by your shell; is that set up?" | yes: the `supabase-cli` block (`CLAUDE.md` and the session-start script) and the step-5c credential denies; no or not yet: the block stripped, no credential denies, and the report gives the setup from `reference/conventions.md` section 1 | Supabase |
 | "Have you created the Supabase project yet?" With a linked ref found, ask instead: "I found a linked Supabase project, `<ref>`. Is that this app's project?" | whether the project exists: only a yes asks the rows below; anything else takes the no-backend path below | Supabase |
 | "Have you set up this project's two database connectors yet? (One that can only read, added in Claude.ai; one that can also change data, added in Claude Code. Each is tied to this one Supabase project: its address includes `project_ref=` and this project's ID.)" | the no-connectors path below | the project exists |
 | "Will you apply database changes yourself in the Supabase dashboard, or let Claude apply them? (Recommended: yourself.)" | yourself, or no answer: the `schema-by-hand` and `migration-deny` blocks and the step-5c `apply_migration` deny; Claude: the `schema-by-claude` block and the step-5c `apply_migration` ask | the project exists |
@@ -92,7 +93,7 @@ Why: a question the user cannot parse gets a guessed answer, and a guess written
 | "What's the smallest first piece you want to build?" | the first `ROADMAP.md` epic (step 5b) | always; "not sure yet" is a fine answer |
 | "Save these setup files as a commit when done? (Recommended: yes.)" When step 2 found uncommitted files already there, list them and ask whether the commit includes them too. When the folder is not a repository yet but already holds files, add: "This folder already has files in it. On a yes, before setting anything up I'll show you what's here and ask whether to save it as a commit of its own first." | step 5f commit; for a folder that is not a repository and holds files, the step-5 existing-files commit | always |
 
-The `database`, `supabase`, `schema-by-hand` and `schema-by-claude` blocks are in both templates; `scheduled-ci`, `connectors`, `migration-deny`, `push-deploys` and `push-safe` in `CLAUDE.md` only; and `strategy`, `digest`, `llm`, `domain-skill`, `multi-user`, `repo-clone` and `repo-search` in the instructions only. When the schema question is not asked (no Supabase project yet, or a database that is not Supabase), `schema-by-hand` is kept and `schema-by-claude` and `migration-deny` are stripped.
+The `database`, `supabase`, `schema-by-hand` and `schema-by-claude` blocks are in both templates; `scheduled-ci` and `supabase-cli` in `CLAUDE.md` and the session-start script, and `push-guard` in the session-start script only; `connectors`, `migration-deny`, `push-deploys` and `push-safe` in `CLAUDE.md` only; and `strategy`, `digest`, `llm`, `domain-skill`, `multi-user`, `repo-clone` and `repo-search` in the instructions only. When the schema question is not asked (no Supabase project yet, or a database that is not Supabase), `schema-by-hand` is kept and `schema-by-claude` and `migration-deny` are stripped.
 
 **Ask the rows that need an existing Supabase project (the connectors, their names, the schema question, the project's ID, the user ID) only once the user has said the project exists: as a follow-up to the batch, never as conditional sub-questions inside it. A linked ref found in step 2 makes the confirmation itself a batch row, and the rest follow it.**
 Why: a question shown before the project exists invites a guessed answer, and the no-backend path below asks nothing more about the project.
@@ -261,6 +262,11 @@ Why: the existing hook is the project's own check, and a guard that silently sto
 
 The human's escape hatch is `git push --no-verify`, typed in a terminal; the denies above keep it from Claude. The hook is `sh`; on Windows it runs under Git for Windows' bash, untested there.
 
+**Write the session-start check in every target: `templates/session-start.sh.tmpl`, filled, as `scripts/session-start.sh`, executable and committed, with its `supabase-cli`, `push-guard` and `scheduled-ci` blocks kept or stripped as its TEMPLATE NOTES say.**
+Why: a pre-flight check kept only in `CLAUDE.md`'s prose is rebuilt from memory each session, while one script fails the same way in every repo and never prints the credential it checks.
+
+`CLAUDE.md`'s Session Workflow and Gates point at it (`sh scripts/session-start.sh`). An existing `scripts/session-start.sh` is merged and shown like any other existing file (step 4).
+
 **Recommend a GitHub ruleset only where the repo's visibility and plan allow one, and otherwise name the push guard as the layer that holds.**
 Why: a ruleset is enforced on GitHub's side for every client and every form of the command, which makes it the control that actually holds where it exists; but on the free plan, protected branches are a paid feature for private repositories ([GitHub's plans](https://docs.github.com/en/get-started/learning-about-github/githubs-plans)), and GitHub's API refuses rulesets there too, asking for an upgrade or a public repository, so recommending one there sends the user to a 403 and leaves them believing in a layer that does not exist.
 
@@ -275,6 +281,18 @@ With the supabase block kept, also merge in:
 ```json
 { "permissions": { "deny": ["Bash(supabase db push:*)", "Bash(npx supabase db push:*)"] } }
 ```
+
+With the `supabase-cli` block kept (Claude Code runs the Supabase CLI, and its token is set up), also merge in the credential denies, with `<slug>` filled from the project slug:
+
+```json
+{ "permissions": { "deny": [
+  "Read(~/.config/<slug>/**)", "Edit(~/.config/<slug>/**)",
+  "Bash(env *supabase*)", "Bash(*SUPABASE_ACCESS_TOKEN*)",
+  "Bash(printenv*)", "Bash(env)", "Bash(export)", "Bash(export -p*)", "Bash(declare -p*)", "Bash(set)"
+] } }
+```
+
+They keep the token folder out of the file tools and out of the Bash file commands and redirections Claude Code checks against file rules (`cat`, `head`, `tail`, `sed`, `tee`, `> file`, `< file`); deny the wrapped `supabase` form and any command naming the variable; and deny the commands that print the whole environment. From [Claude Code's permissions docs](https://code.claude.com/docs/en/permissions): `Write(...)` rules never match, so `Edit` is the write rule; `env` is not one of the wrappers Claude Code strips before matching, so `env ... supabase ...` is matched as an `env` command and needs its own rule; and deny rules match past any leading `VAR=value` assignment. The convention behind them, and what they cannot catch, is [`reference/conventions.md`](reference/conventions.md) section 1.
 
 With the `migration-deny` block kept (the project exists, and the user applies schema changes by hand), also merge in the writable connector's `apply_migration`, keyed to the name step 3 gave, else to the suggested `supabase-<slug>-rw`:
 
@@ -333,13 +351,15 @@ Then ask "Copy the Claude.ai instructions to your clipboard now?". On a yes, cop
 **The instructions file stays at `.claude/project-instructions.local.md`, and its contents never go into any committed file.**
 Why: it may hold the real ref and IDs, and `.claude/` is a hidden folder, so the copy command in the report is how the user gets at it again.
 
-**e. Run the scoped doc-contract command** (`DOC_CONTRACT_CMD`) in the foreground, unpiped, and read its exit code. It must be green. If the repo has a build script, run it once too: the bootstrap is not done if the new files broke it.
+**e. Run the scoped doc-contract command** (`DOC_CONTRACT_CMD`) in the foreground, unpiped, and read its exit code. It must be green. If the repo has a build script, run it once too: the bootstrap is not done if the new files broke it. Run `sh scripts/session-start.sh` once as well, after the push guard is switched on; a line it prints is reported for the user to fix (a token not set up yet, say), not a bootstrap failure.
 
 Checks, over every Markdown file written or merged (and the test file where named). They run once, and are broader than the doc-contract test's template-token check, which holds the recorded half: on every doc-contract run it fails any unfilled `UPPER_SNAKE_CASE` token in the docs and `CLAUDE.md`, but never sees the instructions file, a lowercase or partial `{{`, or a stand-in.
 
 ```bash
 awk 'FNR==1{f=0} /^[ \t]*```/{f=!f; next} !f && /\{\{/{print FILENAME":"FNR": "$0; bad=1} END{exit bad}' <files>
-command grep -nE '\{\{[A-Z_]+\}\}' <files> <test file> .githooks/pre-push    # must print nothing
+command grep -nE '\{\{[A-Z_]+\}\}' <files> <test file> .githooks/pre-push scripts/session-start.sh    # must print nothing
+command grep -nE '^# (BEGIN|END):|TEMPLATE NOTES' scripts/session-start.sh    # must print nothing
+sh -n scripts/session-start.sh    # must exit 0
 command grep -niE 'your[-_ ]?(project|ref|user|owner|id|connector)|placeholder|changeme|xxxx|lorem|dummy' <files>    # must print nothing
 awk 'FNR==1{f=0;b=0;r=0} /^[ \t]*```/{f=!f} f{next} /^[ \t]*$/{if(++b>1){print FILENAME":"FNR": blank-line run"; bad=1}; next} {b=0} /^---[ \t]*$/{if(r){print FILENAME":"FNR": doubled ---"; bad=1}; r=1; next} {r=0} END{exit bad}' <files>    # layout
 ```
@@ -423,6 +443,8 @@ The report shows the registration's result: each file written or appended, with 
   - Project exists: each flag from the step-5e connector checks, each scoping check's result (or the message to run it from a chat), the writable connector's local-scope command and both connector URLs from step 3 (the real ref for a private repo, `<ref>` for a public one), and, when the two scoped connectors do not both exist (none yet, or an account-wide writable one refused), the whole connector setup from step 3.
   - The `apply_migration` deny or ask and the writable connector's ask rules, if written: the name they are keyed to, the keep-this-name line when that name is the suggested one, and the ID-prefix rule from step 5c.
 - Push asks: written or not, per the step-3 push answer; an unsure answer is named for the user to settle.
+- CLI credential, with the supabase block kept: the step-5c credential denies written (with the slug they name) or not, per the step-3 CLI answer, and what they cannot catch (Known limits below). Either way, a note that the user sets up the token file and the shell profile themselves, never a session, with the steps from [`reference/conventions.md`](reference/conventions.md) section 1 when the answer was no or not yet.
+- Session-start check: `scripts/session-start.sh` written, the blocks kept, and what its one bootstrap run printed.
 - Settings ratchet: the rules listed in `CONFIG.settingsRules`.
 - Roadmap: each item on an existing roadmap that the code already covers, left as the user wrote it (step 5b).
 - Left for the user: paste the instructions as above, then start a fresh planning chat; regenerate step 5d alone once the remote exists, if step 5d could not read the GitHub login; apply any schema steps by hand, unless they chose to let Claude apply them; each command written as `NOT SET UP YET`, with what to add; replace the example epic in `ROADMAP.md`, if it was kept; after an ADOPT, describe the existing features in the spec; the step-3 one-line pointer, if there was no backend, or "regenerate the Claude.ai instructions after the connectors exist", if the backend exists without them; push, if a remote existed.
@@ -432,6 +454,7 @@ The report shows the registration's result: each file written or appended, with 
 
 - **The push denies match command text, so these forms pass them:** git's global options before `push` (`git -C <dir> push`, `git -c <key>=<value> push`, `git --git-dir=<dir> push`); quoted words (`git 'push'`, `"+main"`, `'--force'`); git run by path (`/usr/bin/git push`) or inside `sh -c`, `bash -c`, `eval`, `xargs` with flags, or an environment runner such as `npx`; bundled short flags where `f` or `d` is not first (`-uf`, `-qd`); a git alias (`git config alias.fp "push --force"`); a configured refspec or mirror (`remote.<name>.push` with a leading `+`, `remote.<name>.mirror`) that turns a plain `git push` into a force push, deletion or mirror; any script or tool that pushes or deletes on its own (an npm script, a Node or Python script, `gh api -X DELETE .../git/refs/heads/<branch>`); a mod whose `tool.check` handler approves the call, outside managed settings and Team or Enterprise plans; and every push the user runs outside Claude Code. The push guard catches each of these that runs git's own push with hooks on, except a deletion by `--mirror` (next item), and a GitHub ruleset, where the plan allows one, covers all of them for the default branch.
 - **The push guard stops mistakes, not an agent set on getting around it:** it runs only when git runs it, so these pass it: `--no-verify` (denied to Claude only in its usual spellings, and the human's escape hatch); an edited or deleted hook file (in auto mode an edit there is auto-approved, since `.githooks/` is not a protected path); `core.hooksPath` pointed elsewhere in another config scope (`git config --global`, `--system`, a local `git config` to another folder, an included config file) or through the environment (`GIT_CONFIG_COUNT` with `GIT_CONFIG_KEY_<n>` and `GIT_CONFIG_VALUE_<n>`, `GIT_CONFIG_GLOBAL`); a `-c` override in another capitalization, or in a form the push denies cannot see; and any push that does not go through git, such as `gh api -X DELETE`. Git leaves a branch that `--mirror` (or `remote.<name>.mirror`) deletes out of the hook's input (seen on git 2.39), so the guard never sees that deletion. It reads ancestry from this clone, so it refuses an update over a remote commit the clone has not fetched until the user fetches. A fresh clone has no guard until it runs the setup line. A hook manager that refuses to install while `core.hooksPath` is set (pre-commit, for one) stops reinstalling after the setup line, though the hook it installed before keeps running through the guard. It is `sh`, untested on Windows.
+- **The credential denies match command text and named paths, so these pass them:** a program invoked by path or inside `sh -c` or `bash -c`; a script or tool that reads its own environment (an npm script, a Node or Python script); `$HOME` or a variable in place of the literal `~/.config/<slug>/` path; a read-only command that reads files without naming them, such as `grep -r` run from a parent folder; and environment dumps the list does not name. The limited permission on the token is the control that holds when a rule does not ([`reference/conventions.md`](reference/conventions.md) section 1).
 - **Ask rules need someone to answer:** a headless run (`claude -p`) has no prompt to show, so an action an ask rule matches is refused there; a prompt that pushes or calls the writable connector needs the user present.
 - **Headless proofs cannot write into `.claude/`:** it is a protected path, so in Manual or `acceptEdits` mode a `claude -p` child, having no prompt to show, is refused every write there; a proof writes `.claude/settings.json` and the instructions file to scratch copies and runs those files' checks on the copies.
 - **Nothing checks inside existing files for keys:** before the existing-files commit, only the `.gitignore` lines keep secret files out, by name, so a key written into source code is committed with it.

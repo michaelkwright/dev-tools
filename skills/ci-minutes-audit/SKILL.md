@@ -77,7 +77,7 @@ Open these from this folder when needed:
 
 - `reference/github-billing-facts.md`: one-line billing, trigger and API facts with verification date and source URL. Open before quoting any quota, rate or endpoint behavior; re-verify live first, since GitHub changes them.
 - `reference/lessons.md`: short lessons on what misled the first audit and why each lever works. Open when choosing levers or designing a scheduled workflow.
-- `reference/case-study-private-app-2026-09.md`: a worked example with real numbers, the restructure chosen and its expected billed minutes per trigger. Open to sanity-check your own estimates or to see what a finished audit looks like.
+- `reference/case-study-private-app.md`: a worked example with real numbers, the restructure chosen and its expected billed minutes per trigger. Open to sanity-check your own estimates or to see what a finished audit looks like.
 
 ## Read-only guarantee
 

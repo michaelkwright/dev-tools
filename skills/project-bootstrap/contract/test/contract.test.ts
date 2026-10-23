@@ -1,6 +1,7 @@
 // Contract test for this skill's own text: the permission rules SKILL.md has
 // the bootstrap write, the .gitignore line, the provenance wording, the push
-// guard's harness, and the auto-mode lines in the templates. Agent proofs
+// guard's harness, the auto-mode lines in the templates, the conventions
+// document's pinned rules and the session-start template's shape. Agent proofs
 // cover only judgment calls and Claude Code's permission engine (CLAUDE.md,
 // Proofs); everything a script can decide is decided here.
 import { existsSync, readFileSync } from "node:fs";
@@ -22,6 +23,11 @@ const MIGRATION_DENY = ["mcp__supabase-<slug>-rw__apply_migration"];
 const MIGRATION_ASK = ["mcp__supabase-<slug>-rw__apply_migration"];
 const CONNECTOR_ASKS = ["mcp__supabase-<slug>-rw__execute_sql", "mcp__supabase-<slug>-rw__deploy_edge_function"];
 const PUSH_ASKS = ["Bash(git push)", "Bash(git push *)"];
+const CREDENTIAL_DENIES = [
+  "Read(~/.config/<slug>/**)", "Edit(~/.config/<slug>/**)",
+  "Bash(env *supabase*)", "Bash(*SUPABASE_ACCESS_TOKEN*)",
+  "Bash(printenv*)", "Bash(env)", "Bash(export)", "Bash(export -p*)", "Bash(declare -p*)", "Bash(set)",
+];
 
 // Each permission-engine probe's last proof and the exact rule strings it
 // proved. When SKILL.md's strings stop matching these, the probe is due:
@@ -53,6 +59,19 @@ const PROBES = [
     deny: MIGRATION_DENY,
     ask: [...CONNECTOR_ASKS, ...MIGRATION_ASK, ...PUSH_ASKS],
     covered: ["git push", "git push origin main"],
+  },
+  {
+    // One child, slug order-desk, a stub supabase first on PATH. The Read deny
+    // forms (`cat` of the token file, the Read tool) were proved there too, but
+    // only Bash forms are modelled below.
+    probe: "credential denies (stub supabase, scratch HOME)",
+    lastProof: "round 8, commit 'project-bootstrap: cross-repo conventions, credential convention, session-start check; case study genericized'",
+    deny: CREDENTIAL_DENIES,
+    ask: [] as string[],
+    covered: [
+      "echo $SUPABASE_ACCESS_TOKEN", "printenv", "env",
+      "env -u SUPABASE_ACCESS_TOKEN supabase db push", "SUPABASE_ACCESS_TOKEN=x supabase db push",
+    ],
   },
 ];
 
@@ -147,6 +166,19 @@ describe("permission rules SKILL.md writes", () => {
     const ref = readFileSync(fileURLToPath(new URL("../../../doc-system/reference/doc-contracts.test.ts", import.meta.url)), "utf8");
     expect(ref).toContain("settingsRules: {");
     expect(ref).toContain('describe("settings ratchet"');
+  });
+
+  it("the credential denies are exactly these strings, in one block, kept with supabase-cli", () => {
+    const blocks = blockWith("deny", CREDENTIAL_DENIES[0]);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].permissions.deny).toEqual(CREDENTIAL_DENIES);
+    expect(blocks[0].lead).toMatch(/^With the `supabase-cli` block kept/);
+  });
+
+  it("plain CLI calls and the session-start check pass the credential denies", () => {
+    const bash = CREDENTIAL_DENIES.filter((r) => r.startsWith("Bash("));
+    for (const cmd of ["supabase functions deploy demo", "supabase gen types typescript --linked", "sh scripts/session-start.sh", "set -e"])
+      expect(matchesAny(bash, cmd), cmd).toBe(false);
   });
 
   it("plain pushes pass the denies", () => {
@@ -266,6 +298,50 @@ describe("a folder that is not a repository but holds files", () => {
   it("the step-3 commit row and step 5f follow it", () => {
     expect(skill()).toContain("On a yes, before setting anything up I'll show you what's here and ask whether to save it as a commit of its own first.");
     expect(skill()).toContain("stage by path the files this bootstrap created or merged");
+  });
+});
+
+describe("the conventions document", () => {
+  const conv = () => read("reference/conventions.md");
+
+  it("states the propagation rule and the plain-command rule", () => {
+    expect(conv()).toContain(
+      "**Skills under `skills/` reach every project live through `install.sh`; files under `templates/` are copied, stamped with the dev-tools commit and become the project's own, so a convention change reaches an existing repo only through a per-project change.**",
+    );
+    expect(conv()).toContain(
+      "**Every CLI call is the plain command, `supabase ...`, never prefixed by `env`, an inline assignment, `npx`, `sh -c` or any wrapper.**",
+    );
+  });
+
+  it("bootstrap reads it, and the CLI row and the credential limit point at it", () => {
+    expect(skill()).toContain("Read every template from this checkout: `templates/` next to this file, `reference/conventions.md`,");
+    expect(skill()).toContain("the report gives the setup from `reference/conventions.md` section 1 | Supabase |");
+    expect(skill()).toContain("- **The credential denies match command text and named paths, so these pass them:**");
+  });
+});
+
+describe("the session-start check", () => {
+  const tmpl = () => read("templates/session-start.sh.tmpl");
+
+  it("carries the provenance wording and its three blocks", () => {
+    expect(tmpl()).toContain(
+      "# Session-start check. Seeded from dev-tools @ {{DEV_TOOLS_SHA}}; this file is\n# now the project's own, and a later port of dev-tools changes updates that\n# commit to the one ported from.",
+    );
+    for (const name of ["supabase-cli", "push-guard", "scheduled-ci"])
+      for (const m of [`# BEGIN:${name}`, `# END:${name}`]) expect(tmpl().split(`\n${m}\n`), m).toHaveLength(2);
+  });
+
+  it("tests the token only for being set, and never expands it anywhere else", () => {
+    expect(tmpl()).toContain('if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then');
+    expect(tmpl().split("SUPABASE_ACCESS_TOKEN:-")).toHaveLength(2);
+    expect(tmpl()).not.toMatch(/\$SUPABASE_ACCESS_TOKEN|\$\{SUPABASE_ACCESS_TOKEN\}/);
+  });
+
+  it("SKILL.md writes it to every target, and CLAUDE.md runs it at pre-flight", () => {
+    expect(skill()).toContain("**Write the session-start check in every target: `templates/session-start.sh.tmpl`, filled, as `scripts/session-start.sh`, executable and committed");
+    const t = read("templates/CLAUDE.md.tmpl");
+    expect(t).toContain("a session runs the session-start check (`sh scripts/session-start.sh`) at pre-flight, which fails when `git config core.hooksPath` does not print `.githooks`.**");
+    expect(t).toContain("<!-- BEGIN:supabase-cli -->\n- The Supabase CLI's credential, `SUPABASE_ACCESS_TOKEN`, is already in the environment; a session never prints, sets, unsets or overrides it.\n<!-- END:supabase-cli -->");
   });
 });
 

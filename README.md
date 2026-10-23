@@ -19,7 +19,7 @@ Portable Claude Code skills and dev tooling, offered as-is. No support is promis
 | [`doc-system`](skills/doc-system/SKILL.md) | A spec, windowed changelog, forward-only roadmap, decision records and handoffs, held to shape by a vitest contract test. Seeds a new repo or adopts an existing one's docs without rewriting them. |
 | [`llm-call-hygiene`](skills/llm-call-hygiene/SKILL.md) | Calling a model API without the silent failures: reading the trailing text instead of a fixed index, checking the stop reason before parsing, per-model request bodies, model swaps, per-call logging and capped paid runs, and server-built prompts. Includes copyable response helpers for the Anthropic Messages API, a fixed-index-read guard on the ratchet core, and a capped repeated-draw runner with a dry run, all proven by a harness that makes no API call. |
 | [`observability-traps`](skills/observability-traps/SKILL.md) | Signals that look like evidence and are not: counters, timestamps, empty results, scheduler ledgers, product-usage noise and platform metrics. Includes a heartbeat table and a read-only two-sided watchdog query, proven by a PGlite break-probe harness. |
-| [`project-bootstrap`](skills/project-bootstrap/SKILL.md) | Sets up the planning → Claude Code workflow in a new or existing repo: `CLAUDE.md`, the doc system, committed permission rules and the Claude.ai planning instructions. |
+| [`project-bootstrap`](skills/project-bootstrap/SKILL.md) | Sets up the planning → Claude Code workflow in a new or existing repo: `CLAUDE.md`, the doc system, committed permission rules, a session-start check and the Claude.ai planning instructions, indexed by a cross-repo conventions document. |
 | [`ratchet-tests`](skills/ratchet-tests/SKILL.md) | Bidirectional snapshot ratchets: enumerate every site of a bug class from source, hold the violations to a worklist CI keeps honest in both directions, and fail in the diff that introduces a new one. Includes a generic ratchet core, a ready-to-adopt fixture-date ratchet, and recipes for unchecked results and the vitest environment split. |
 | [`supabase-hardening`](skills/supabase-hardening/SKILL.md) | Database-side security for a Supabase project: born-open default grants, gates that look closed and are not, Edge Function and Storage auth, and how to prove each. Includes migration templates and a read-only posture audit, both proven by a PGlite break-probe harness. |
 | [`vitest-suite-speed`](skills/vitest-suite-speed/SKILL.md) | Measure-first method for a slow vitest suite, and the node/jsdom environment split to set up in a new project. |
@@ -43,7 +43,10 @@ Install the skills, then open Claude Code in the new (or existing) repo and ask 
 - a `CLAUDE.md` with the session workflow, gates and failure-pattern conventions;
 - the doc system (spec, changelog, roadmap, decisions, handoffs, audits) and its contract test, run green;
 - a committed `.claude/settings.json` denying force pushes and remote branch deletion, plus `supabase db push` for Supabase projects, and the writable connector's `apply_migration` when you apply schema changes by hand;
+- `scripts/session-start.sh`, the session-start check each session runs first, which confirms the push guard is on and, when Claude Code runs the Supabase CLI, that the project's own CLI token is loaded;
 - the Claude.ai planning instructions, written to a gitignored local file and offered on your clipboard, for you to paste into your Claude.ai Project's custom instructions.
+
+Every bootstrapped repo follows the same conventions, indexed in [`skills/project-bootstrap/reference/conventions.md`](skills/project-bootstrap/reference/conventions.md) with where each one is implemented.
 
 At the end it offers to commit the result and, when the repo has no remote yet, to create the GitHub repo; it pushes only on your yes.
 

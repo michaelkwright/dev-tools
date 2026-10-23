@@ -1,0 +1,45 @@
+#!/bin/sh
+# TEMPLATE NOTES. The bootstrap fills each placeholder, keeps or strips each
+# optional block, deletes the marker lines of kept blocks, then deletes these
+# notes down to and including the blank line after them.
+#   DEV_TOOLS_SHA     dev-tools commit this file was seeded from.
+#   SCHEDULED_CI_CMD  Latest scheduled CI runs (scheduled-ci), as in CLAUDE.md.
+# Optional blocks sit between "# BEGIN:<name>" and "# END:<name>" lines.
+#   supabase-cli  Keep only when CLAUDE.md keeps its supabase-cli block.
+#   push-guard    Keep in every target. When core.hooksPath already named
+#                 another folder (step 5c), write that folder for .githooks.
+#   scheduled-ci  Keep only when CLAUDE.md keeps its scheduled-ci block.
+
+# Session-start check. Seeded from dev-tools @ {{DEV_TOOLS_SHA}}; this file is
+# now the project's own, and a later port of dev-tools changes updates that
+# commit to the one ported from.
+#
+# Run at session pre-flight, from the repo root: sh scripts/session-start.sh
+# Each failed check prints one line on stderr, and the exit status is non-zero
+# when any check failed. It tests a credential only for being set, and never
+# prints, compares or logs its value.
+
+status=0
+fail() {
+  echo "session-start: $1" >&2
+  status=1
+}
+
+# BEGIN:supabase-cli
+if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then
+  fail "SUPABASE_ACCESS_TOKEN is not set; open a new terminal in this project's folder so the shell profile loads it, then start the session again"
+fi
+# END:supabase-cli
+
+# BEGIN:push-guard
+if [ "$(git config core.hooksPath)" != ".githooks" ]; then
+  fail "git config core.hooksPath does not print .githooks, so the push guard is off; run: git config core.hooksPath .githooks"
+fi
+# END:push-guard
+
+# BEGIN:scheduled-ci
+echo "Latest scheduled CI runs:"
+{{SCHEDULED_CI_CMD}} || fail "could not list the latest scheduled CI runs ({{SCHEDULED_CI_CMD}})"
+# END:scheduled-ci
+
+exit "$status"

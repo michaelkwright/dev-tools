@@ -133,7 +133,7 @@ describe("push guard", () => {
 
   it("SKILL.md's stanza adds the guard to a hook a set core.hooksPath already runs, which still reads its input", () => {
     const skill = readFileSync(fileURLToPath(new URL("../../SKILL.md", import.meta.url)), "utf8");
-    const stanza = skill.match(/```sh\n( *# Push guard:[^]*?)\n *```/)?.[1].replace(/^ {2}/gm, "");
+    const stanza = skill.match(/```sh\n( *# Push guard:[^]*?)\n *```/)?.[1].replace(/^ {2}/gm, "").replaceAll("<guard path>", ".githooks/pre-push");
     expect(stanza).toBeTruthy();
     const marker = join(dir, "manager-hook-ran");
     mkdirSync(join(work, ".hooks-mgr"));

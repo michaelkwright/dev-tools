@@ -1,0 +1,21 @@
+{
+  "permissions": {
+    "deny": [
+      "Bash(git push*--force*)",
+      "Bash(git push* -f*)",
+      "Bash(git push* +*)",
+      "Bash(git push*--de*)",
+      "Bash(git push* -d*)",
+      "Bash(git push* :**)",
+      "Bash(git push*--m*)",
+      "Bash(git push*--pru*)",
+      "Bash(git*--no-veri*)",
+      "Bash(git*-c*core.hooksPath*)",
+      "Bash(git*-c*core.hookspath*)"
+    ],
+    "ask": [
+      "Bash(git push)",
+      "Bash(git push *)"
+    ]
+  }
+}

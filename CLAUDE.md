@@ -80,6 +80,21 @@ Why: it inherits user-level context, including identity details the host injects
 
 ---
 
+## Pushing
+
+**The push guard at `.githooks/push-guard` runs ahead of the scrub gate from `.githooks/pre-push`, and a change to `templates/pre-push.tmpl` updates the guard's copy in the same commit.**
+Why: the scrub gate checks what is published, not how it is pushed, and a copy that drifts from the template stops vouching for the template's tests.
+
+**`.claude/settings.json` denies force pushes and remote deletions and asks on every push, and the contract test pins its lists to the strings in `SKILL.md`.**
+Why: in auto mode an edit under `.claude/` is judged by a classifier rather than shown to the user, so a rule deleted there goes unseen until the push it gated runs.
+
+**A session runs `sh scripts/session-start.sh` at pre-flight, which fails when `git config core.hooksPath` does not print `.githooks`.**
+Why: `core.hooksPath` is per-clone config that git never copies, so a fresh clone has no guard until someone checks.
+
+The contract test pins all three, so a change to the template or the rules updates the guard, the rules and the script in one commit.
+
+---
+
 ## Proofs
 
 **Prove before pushing: commit locally, run every proof from a detached worktree of that commit, fold any fix into the same unpushed commit, then run the gates once and push once.**
@@ -114,6 +129,9 @@ Why: a proof's installs otherwise fill the user's own npm cache, outside scratch
 
 **Run a cold proof as `claude -p` children, one per case, each continued turn by turn with `--resume` and the `session_id` its JSON output gives; the parent answers only from the case's fixed answer sheet, and any question not on the sheet is a finding.**
 Why: a child starts with none of the parent's context, so what it does comes from the repo, and an answer improvised mid-run tests the parent's judgment instead of the skill; a subagent still does not count (Skills, above).
+
+**A child keeps the real `HOME`, since the subscription login lives under it, and takes its rules from a scratch settings file in a scratch cwd; it never creates a file under `~/.config`, and a path deny is read as "refused" only against a control path that is not denied.**
+Why: a scratch `HOME` leaves the child signed out, so it fails for a reason that has nothing to do with the rule, and a refusal means something only beside a path the same child can read.
 
 **Start every child in a clean environment (`env -i` with `HOME`, `PATH`, `USER`, `TMPDIR` and the proof's own variables), never the session's.**
 Why: a host session exports its own session ID, entrypoint, API base URL and similar variables, and a child that inherits them runs as part of that session rather than cold.

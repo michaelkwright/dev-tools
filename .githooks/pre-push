@@ -1,4 +1,10 @@
 #!/usr/bin/env bash
+# Push guard: refuses force pushes and remote ref deletions (.githooks/push-guard)
+guard_in="$(mktemp)" || exit 1
+cat > "$guard_in"
+PUSH_GUARD_ONLY=1 sh "$(git rev-parse --show-toplevel)/.githooks/push-guard" "$@" < "$guard_in" || { rm -f "$guard_in"; exit 1; }
+exec < "$guard_in"
+rm -f "$guard_in"
 # Blocks the push if the scrub gate reports any blocking hit or error.
 # Git passes the remote as $1 and one line per pushed ref on stdin; each
 # pushed tip is scanned along with every ref already on that remote.

@@ -27,7 +27,7 @@ Why: a shared credential becomes the one that one project revokes or mis-scopes 
 **The shell profile exports `SUPABASE_ACCESS_TOKEN` from that file only when the shell starts inside that project's repo folder, and nothing else exports it anywhere; check the profile with `bash -n` (`zsh -n` for a zsh profile) after editing it, then run `supabase logout`, so no account-wide login remains to fall back on.**
 Why: a CLI with a stored login falls back to it whenever the variable is missing, so a project whose token failed to load runs with the account's full reach and nothing says so.
 
-One case arm per project, in `~/.bashrc` or `~/.zshrc`:
+One case arm per project, in the file your shell reads when it starts: `~/.zshrc` for zsh (the Mac default), `~/.bash_profile` for bash on a Mac, `~/.bashrc` for bash on Linux; check it with `zsh -n` or `bash -n` to match:
 
 ```bash
 case "$PWD" in
@@ -49,6 +49,8 @@ Why: a rule not committed is not in the next clone, and one not in the ratchet c
 
 **Known limits: the denies match command text and named paths, so they cannot catch a program invoked by path or inside `sh -c` or `bash -c`; a script or tool that reads its own environment; `$HOME` or a variable in place of the literal path; or a read-only command that reads files without naming them (`grep -r` from a parent folder). The limited permission on the token is the control that holds when a rule does not.**
 Why: a session that believes the denies are a boundary stops looking at what runs past them, and only the token's own scope limits what a leaked value can do.
+
+`permissions.blockReadsOutsideWorkingDirectories` is not the answer: with it on, a skill still loads through its `~/.claude/skills` symlink but cannot read its own files, which breaks any skill that reads its templates, project-bootstrap included.
 
 - Implemented in: `CLAUDE.md.tmpl`'s `supabase-cli` blocks (the Supabase section and Running in auto mode); `session-start.sh.tmpl`'s `supabase-cli` block; `SKILL.md` step 3's CLI row and step 5c's credential denies, listed in `CONFIG.settingsRules`; `GETTING-STARTED.md` section 7, "CLI token".
 - Invariant: the path pattern `~/.config/<slug>/supabase-token`, mode 600, the variable name `SUPABASE_ACCESS_TOKEN`, the plain-command rule, the check's shape (non-empty, never read), and the deny shapes.
@@ -133,7 +135,7 @@ Why: a pre-flight check kept only in prose is rebuilt from memory each session, 
 Why: parallel sessions share one machine and one account, so anything account-wide lets one project's session act on another's data.
 
 **Any change to the shell profile, `~/.config`, a shared account, dev-tools or a cross-project convention is checked against every project before it is applied.** (convention; not yet in the template)
-Why: those are the places every project reads from, so a change made for one lands in all of them.
+Why: those are the places every project reads from, so a change made for one lands in all of them. Registering a project's file names in the scrub config can turn plain words into blocking stems, so dev-tools' scrub gate is run after any registration and the new stems triaged before its next push.
 
 - Implemented in: `CLAUDE.md.tmpl` Session Workflow (the parallel-session rule) and `connectors` block; `SKILL.md` step 3 (scoped connectors, the account-wide refusal); section 1 above; `GETTING-STARTED.md` section 8.
 - Invariant: the parallel-session rule, connectors and credentials scoped to one project.

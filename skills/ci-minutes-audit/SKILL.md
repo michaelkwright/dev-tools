@@ -16,11 +16,11 @@ Needs Node 22+ and an authenticated `gh` that can read the repo's Actions data.
 node ~/.claude/skills/ci-minutes-audit/ci-minutes.mjs
 
 # a closed month, with the docs-only job named, written to files
-node ~/.claude/skills/ci-minutes-audit/ci-minutes.mjs --since 2026-08-01 --until 2026-08-31 \
-  --docs-only-job "Test (docs-only)" --out /tmp/aug.md
+node ~/.claude/skills/ci-minutes-audit/ci-minutes.mjs --since 2000-01-01 --until 2000-01-31 \
+  --docs-only-job "Test (docs-only)" --out /tmp/report.md
 
 # any other repo
-node ~/.claude/skills/ci-minutes-audit/ci-minutes.mjs --repo owner/name --since 2026-09-01
+node ~/.claude/skills/ci-minutes-audit/ci-minutes.mjs --repo owner/name --since 2000-02-01
 ```
 
 Flags: `--repo`, `--since`, `--until` (UTC, inclusive), `--docs-only-job NAME` (repeatable; names a job that only runs on a docs-only path), `--out PATH.md` (also writes a sibling `PATH.json` of raw aggregates plus every run and job), `--cache-dir`, `--step-regex CATEGORY=REGEX` (override `setup` / `install` / `build` / `test`), `--refresh` (ignore the response cache). Responses are cached per repo in the OS temp dir, so re-runs are cheap and a rate-limit stop resumes where it left off. A month of a busy repo costs a few hundred API calls; the report states the count.

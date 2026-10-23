@@ -56,7 +56,7 @@ Read the target and derive every placeholder default from what is there (each te
 **When the source sits at the repo root rather than in `src/`, put the contract test where this step found existing tests, else in `test/` at the root; never create a `src/test/` that holds only it.**
 Why: a `src/` holding nothing but a test folder reads as the start of a layout the repo does not have, and the next session puts code there.
 
-**Already bootstrapped** means every piece exists: `CLAUDE.md` with a `Seeded from dev-tools @` line and the limits markers; the doc system (the seed set, or the files its ADOPT mapping named); the contract test; `.claude/settings.json` with the step-5c push denies, plus the `supabase db push` deny if `CLAUDE.md` has a Supabase section; the step-5c push guard (`.githooks/pre-push`, or its stanza in an existing hook); and the `.gitignore` lines. If so, skip steps 3 to 6 and change nothing tracked. Run step 5e with the command recorded in `CLAUDE.md`; when `git config core.hooksPath` in this clone does not name the guard's folder, give the step-5c setup line. Then report "already bootstrapped from dev-tools @ <recorded SHA> (current: <DEV_TOOLS_SHA>); nothing changed" with the 5e results. Never re-seed or update files the project now owns. If only some pieces exist, do only the missing ones. `.claude/project-instructions.local.md` is untracked, so it is not a piece: when it is missing, or the user asks to regenerate it (once the backend or its connectors exist, say), offer step 5d alone, asking only the step-3 questions it needs. A regeneration after the backend or connectors come to exist also offers, each as a shown merge, what the first run held back: `CLAUDE.md`'s `connectors` and `migration-deny` blocks, the step-5c `apply_migration` deny or ask, and the writable connector's step-5c ask rules.
+**Already bootstrapped** means every piece exists: `CLAUDE.md` with a `Seeded from dev-tools @` line and the limits markers; the doc system (the seed set, or the files its ADOPT mapping named); the contract test; `.claude/settings.json` with the step-5c push denies, plus the `supabase db push` deny if `CLAUDE.md` has a Supabase section; the step-5c push guard (`.githooks/pre-push`, or its stanza in an existing hook); `scripts/session-start.sh`; and the `.gitignore` lines. If so, skip steps 3 to 6 and change nothing tracked. Run step 5e with the command recorded in `CLAUDE.md`; when `git config core.hooksPath` in this clone does not name the guard's folder, give the step-5c setup line. Then report "already bootstrapped from dev-tools @ <recorded SHA> (current: <DEV_TOOLS_SHA>); nothing changed" with the 5e results. Never re-seed or update files the project now owns. If only some pieces exist, do only the missing ones. `.claude/project-instructions.local.md` is untracked, so it is not a piece: when it is missing, or the user asks to regenerate it (once the backend or its connectors exist, say), offer step 5d alone, asking only the step-3 questions it needs. A regeneration after the backend or connectors come to exist also offers, each as a shown merge, what the first run held back: `CLAUDE.md`'s `connectors` and `migration-deny` blocks, the step-5c `apply_migration` deny or ask, and the writable connector's step-5c ask rules.
 
 ## 3. Ask only what detection can't answer, in one batch
 
@@ -71,11 +71,11 @@ Why: a question the user cannot parse gets a guessed answer, and a guess written
 | "What must be true before launch? (For example: no user can ever see another user's data.)" | `LAUNCH_BLOCKERS`, without a closing full stop | always |
 | "Will the app keep its data in a database?" | `database` block (both templates) | always; suggest yes when `supabase/` exists |
 | "Will that database be Supabase?" | `supabase` block (both templates) | the answer above is yes |
-| "Will Claude Code run the Supabase CLI (deploys, generated types)? If so, this setup expects the CLI token at `~/.config/<slug>/supabase-token`, loaded by your shell; is that set up?" | yes: the `supabase-cli` block (`CLAUDE.md` and the session-start script) and the step-5c credential denies; no or not yet: the block stripped, no credential denies, and the report gives the setup from `reference/conventions.md` section 1 | Supabase |
 | "Have you created the Supabase project yet?" With a linked ref found, ask instead: "I found a linked Supabase project, `<ref>`. Is that this app's project?" | whether the project exists: only a yes asks the rows below; anything else takes the no-backend path below | Supabase |
 | "Have you set up this project's two database connectors yet? (One that can only read, added in Claude.ai; one that can also change data, added in Claude Code. Each is tied to this one Supabase project: its address includes `project_ref=` and this project's ID.)" | the no-connectors path below | the project exists |
 | "Will you apply database changes yourself in the Supabase dashboard, or let Claude apply them? (Recommended: yourself.)" | yourself, or no answer: the `schema-by-hand` and `migration-deny` blocks and the step-5c `apply_migration` deny; Claude: the `schema-by-claude` block and the step-5c `apply_migration` ask | the project exists |
 | "What are their names? And is each one tied to this project only, or can it reach every project in your Supabase account?" | `SUPABASE_RO_CONNECTOR`, `SUPABASE_RW_CONNECTOR`; an account-wide writable one is refused (below) | the connectors exist |
+| "Will Claude Code run the Supabase CLI (deploys, generated types)? If so, this setup expects the CLI token at `~/.config/<slug>/supabase-token`, loaded by your shell; is that set up?" | yes: the `supabase-cli` block (`CLAUDE.md` and the session-start script) and the step-5c credential denies; no or not yet: the block stripped, no credential denies, and the report gives the setup from `reference/conventions.md` section 1 | the project exists |
 | "What's the project's ID? It's the short code after `/project/` in the Supabase dashboard's address." | `SUPABASE_PROJECT_REF` | the project exists and no linked ref was found |
 | "Have you signed up in your own app yet? If so, what's your user ID? (Supabase dashboard → Authentication → Users, your row.)" | `OWNER_USER_ID` | the project exists |
 | "Is the app for many people, each with their own account, or just for you?" | `multi-user` block (instructions), kept only for many people | always |
@@ -115,7 +115,7 @@ Adjust only the words around the replacement, and only as far as grammar needs: 
 **Turn a relative date in any answer ("end of next quarter", "in six weeks") into an absolute date, `Month D, YYYY`, counted from today, and confirm it with the user before writing it.**
 Why: a relative date is true only on the day it was said, and every later session reads it against its own today.
 
-**No backend yet: when the database is Supabase but the user has not confirmed the project exists, ask nothing more about it. Keep `CLAUDE.md`'s supabase block (with `$SUPABASE_PROJECT_REF` as below) and the step-5c `supabase db push` deny; strip its `connectors` and `migration-deny` blocks and the instructions' supabase block.**
+**No backend yet: when the database is Supabase but the user has not confirmed the project exists, ask nothing more about it. Keep `CLAUDE.md`'s supabase block (with `$SUPABASE_PROJECT_REF` as below) and the step-5c `supabase db push` deny; strip its `connectors`, `migration-deny` and `supabase-cli` blocks (so the session-start script's too, and no credential denies) and the instructions' supabase block; the CLI-token question is not asked.**
 Why: the build rules and the push deny apply from the first migration, while the connector rules name a project and connections that do not exist yet.
 
 **With no backend, the report gives no connector setup steps, only one line: "Create the Supabase project first, then follow the connector section of dev-tools' `GETTING-STARTED.md` (section 7), and regenerate the Claude.ai instructions."**
@@ -123,7 +123,7 @@ Why: every connector step needs the project's ref, so steps given before the pro
 
 The instructions' supabase block is kept only when the ref, the owner user ID and the names of both connectors, each scoped to this project, are all real answers; otherwise it is stripped the same way, and the report says what to finish before regenerating.
 
-**No connectors yet: when the project exists but its two connectors do not, ask nothing more about them, strip `CLAUDE.md`'s `connectors` block and the instructions' supabase block, and give the connector setup below in the report, with "regenerate the Claude.ai instructions after the connectors exist".**
+**No connectors yet: when the project exists but its two connectors do not, ask nothing more about them, strip `CLAUDE.md`'s `connectors` and `supabase-cli` blocks (and the session-start script's, with no credential denies) and the instructions' supabase block, do not ask the CLI-token question, and give the connector setup below in the report, with "regenerate the Claude.ai instructions after the connectors exist".**
 Why: the connector rules name each connector, and a name written before the connector exists reads as one a session can use.
 
 **Refuse an account-wide writable connector: when the user says the one that can change data reaches every project in their account, record no name and go on as if the connectors were not set up; give the scoped setup, and tell them to remove the account-wide one. The read-only connector's scoping check still runs (step 5e).**
@@ -252,13 +252,16 @@ Why: the existing hook is the project's own check, and a guard that silently sto
 - `core.hooksPath` already set (husky, say, or a committed hooks folder): leave the setting alone, write the guard to `.githooks/pre-push` all the same, and add this stanza at the top of the pre-push hook that folder holds, just under its first line, or of the file the manager generates it from (husky: `.husky/pre-push`), and write `CLAUDE.md`'s setup line and pre-push check for the folder `core.hooksPath` names and the manager's own install step. Re-feeding the input lets the existing hook read it as before:
 
   ```sh
-  # Push guard: refuses force pushes and remote ref deletions (.githooks/pre-push)
+  # Push guard: refuses force pushes and remote ref deletions (<guard path>)
   guard_in="$(mktemp)" || exit 1
   cat > "$guard_in"
-  PUSH_GUARD_ONLY=1 sh "$(git rev-parse --show-toplevel)/.githooks/pre-push" "$@" < "$guard_in" || { rm -f "$guard_in"; exit 1; }
+  PUSH_GUARD_ONLY=1 sh "$(git rev-parse --show-toplevel)/<guard path>" "$@" < "$guard_in" || { rm -f "$guard_in"; exit 1; }
   exec < "$guard_in"
   rm -f "$guard_in"
   ```
+
+  `<guard path>` is `.githooks/pre-push` here, in the `sh` line and in the comment line.
+- `core.hooksPath` already names `.githooks` and `.githooks/pre-push` exists: write the guard as `.githooks/push-guard`, and add the stanza to `.githooks/pre-push` with `<guard path>` set to `.githooks/push-guard`. The setup line is unchanged.
 
 The human's escape hatch is `git push --no-verify`, typed in a terminal; the denies above keep it from Claude. The hook is `sh`; on Windows it runs under Git for Windows' bash, untested there.
 
@@ -287,12 +290,12 @@ With the `supabase-cli` block kept (Claude Code runs the Supabase CLI, and its t
 ```json
 { "permissions": { "deny": [
   "Read(~/.config/<slug>/**)", "Edit(~/.config/<slug>/**)",
-  "Bash(env *supabase*)", "Bash(*SUPABASE_ACCESS_TOKEN*)",
+  "Bash(env *supabase*)", "Bash(npx supabase*)", "Bash(*SUPABASE_ACCESS_TOKEN*)",
   "Bash(printenv*)", "Bash(env)", "Bash(export)", "Bash(export -p*)", "Bash(declare -p*)", "Bash(set)"
 ] } }
 ```
 
-They keep the token folder out of the file tools and out of the Bash file commands and redirections Claude Code checks against file rules (`cat`, `head`, `tail`, `sed`, `tee`, `> file`, `< file`); deny the wrapped `supabase` form and any command naming the variable; and deny the commands that print the whole environment. From [Claude Code's permissions docs](https://code.claude.com/docs/en/permissions): `Write(...)` rules never match, so `Edit` is the write rule; `env` is not one of the wrappers Claude Code strips before matching, so `env ... supabase ...` is matched as an `env` command and needs its own rule; and deny rules match past any leading `VAR=value` assignment. The convention behind them, and what they cannot catch, is [`reference/conventions.md`](reference/conventions.md) section 1.
+They keep the token folder out of the file tools and out of the Bash file commands and redirections Claude Code checks against file rules (`cat`, `head`, `tail`, `sed`, `tee`, `> file`, `< file`); deny the wrapped `supabase` forms (`env`, `npx`) and any command naming the variable; and deny the commands that print the whole environment. From [Claude Code's permissions docs](https://code.claude.com/docs/en/permissions): `Write(...)` rules never match, so `Edit` is the write rule; `env` and `npx` are not among the wrappers Claude Code strips before matching, so `env ... supabase ...` is matched as an `env` command and `npx supabase ...` as an `npx` command, each needing its own rule; and deny rules match past any leading `VAR=value` assignment. The convention behind them, and what they cannot catch, is [`reference/conventions.md`](reference/conventions.md) section 1.
 
 With the `migration-deny` block kept (the project exists, and the user applies schema changes by hand), also merge in the writable connector's `apply_migration`, keyed to the name step 3 gave, else to the suggested `supabase-<slug>-rw`:
 
@@ -426,6 +429,8 @@ Create it in the same registration: the gate stops with exit 2 when `vocab.d/` h
 
 The report shows the registration's result: each file written or appended, with its line count, and never its terms.
 
+The report also says that registering a project's file names can turn plain words into blocking stems, so dev-tools' scrub gate is run after any registration (`scripts/scrub.sh` from the dev-tools checkout, in the foreground, unpiped) and the new stems triaged before its next push.
+
 ## 7. Report
 
 - Files created, and files merged (with what was kept); everything but `.claude/project-instructions.local.md` is meant to be committed.
@@ -443,7 +448,7 @@ The report shows the registration's result: each file written or appended, with 
   - Project exists: each flag from the step-5e connector checks, each scoping check's result (or the message to run it from a chat), the writable connector's local-scope command and both connector URLs from step 3 (the real ref for a private repo, `<ref>` for a public one), and, when the two scoped connectors do not both exist (none yet, or an account-wide writable one refused), the whole connector setup from step 3.
   - The `apply_migration` deny or ask and the writable connector's ask rules, if written: the name they are keyed to, the keep-this-name line when that name is the suggested one, and the ID-prefix rule from step 5c.
 - Push asks: written or not, per the step-3 push answer; an unsure answer is named for the user to settle.
-- CLI credential, with the supabase block kept: the step-5c credential denies written (with the slug they name) or not, per the step-3 CLI answer, and what they cannot catch (Known limits below). Either way, a note that the user sets up the token file and the shell profile themselves, never a session, with the steps from [`reference/conventions.md`](reference/conventions.md) section 1 when the answer was no or not yet.
+- CLI credential, with the supabase block kept: the step-5c credential denies written (with the slug they name) or not, per the step-3 CLI answer (not asked with no backend or no connectors yet: the block stripped, and the report says the question waits until the connectors exist), and what they cannot catch (Known limits below). Either way, a note that the user sets up the token file and the shell profile themselves, never a session, with the steps from [`reference/conventions.md`](reference/conventions.md) section 1 when the answer was no or not yet.
 - Session-start check: `scripts/session-start.sh` written, the blocks kept, and what its one bootstrap run printed.
 - Settings ratchet: the rules listed in `CONFIG.settingsRules`.
 - Roadmap: each item on an existing roadmap that the code already covers, left as the user wrote it (step 5b).

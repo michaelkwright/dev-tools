@@ -2,7 +2,7 @@
 // bootstrap fills it and run with sh in a throwaway git clone. Exit status and
 // stderr lines are the verdict; the token's value must never be printed.
 import { execFileSync, spawnSync } from "node:child_process";
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -85,5 +85,30 @@ describe("session-start check", () => {
   it("a stripped block checks nothing", () => {
     expect(run(fill(["push-guard"])).status).toBe(0);
     expect(run(fill([]), {}, null)).toMatchObject({ status: 0, err: [], out: "" });
+  });
+});
+
+// dev-tools' own scripts/session-start.sh, run from the root of a throwaway
+// repository it was copied into, as `sh scripts/session-start.sh`.
+describe("dev-tools' own session-start script", () => {
+  const OWN = fileURLToPath(new URL("../../../../scripts/session-start.sh", import.meta.url));
+  const runOwn = (hooksPath: string | null) => {
+    mkdirSync(join(dir, "scripts"));
+    copyFileSync(OWN, join(dir, "scripts", "session-start.sh"));
+    chmodSync(join(dir, "scripts", "session-start.sh"), 0o755);
+    if (hooksPath) execFileSync("git", ["-C", dir, "config", "core.hooksPath", hooksPath]);
+    const env = { PATH: process.env.PATH ?? "", HOME: dir, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
+    const r = spawnSync("sh", ["scripts/session-start.sh"], { cwd: dir, env, encoding: "utf8" });
+    return { status: r.status, out: r.stdout, err: r.stderr.split("\n").filter(Boolean) };
+  };
+
+  it("exits 1 with one stderr line when core.hooksPath is unset", () => {
+    const r = runOwn(null);
+    expect(r.status).toBe(1);
+    expect(r.err).toEqual([expect.stringMatching(/^session-start: git config core\.hooksPath does not print \.githooks/)]);
+  });
+
+  it("exits 0 and prints nothing when core.hooksPath is .githooks", () => {
+    expect(runOwn(".githooks")).toMatchObject({ status: 0, err: [], out: "" });
   });
 });

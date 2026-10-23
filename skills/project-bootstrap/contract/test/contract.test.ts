@@ -4,7 +4,7 @@
 // document's pinned rules and the session-start template's shape. Agent proofs
 // cover only judgment calls and Claude Code's permission engine (CLAUDE.md,
 // Proofs); everything a script can decide is decided here.
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -25,9 +25,11 @@ const CONNECTOR_ASKS = ["mcp__supabase-<slug>-rw__execute_sql", "mcp__supabase-<
 const PUSH_ASKS = ["Bash(git push)", "Bash(git push *)"];
 const CREDENTIAL_DENIES = [
   "Read(~/.config/<slug>/**)", "Edit(~/.config/<slug>/**)",
-  "Bash(env *supabase*)", "Bash(*SUPABASE_ACCESS_TOKEN*)",
+  "Bash(env *supabase*)", "Bash(npx supabase*)", "Bash(*SUPABASE_ACCESS_TOKEN*)",
   "Bash(printenv*)", "Bash(env)", "Bash(export)", "Bash(export -p*)", "Bash(declare -p*)", "Bash(set)",
 ];
+// The list as round 8 proved it, before the npx deny joined.
+const CREDENTIAL_DENIES_R8 = CREDENTIAL_DENIES.filter((r) => r !== "Bash(npx supabase*)");
 
 // Each permission-engine probe's last proof and the exact rule strings it
 // proved. When SKILL.md's strings stop matching these, the probe is due:
@@ -64,13 +66,26 @@ const PROBES = [
     // One child, slug order-desk, a stub supabase first on PATH. The Read deny
     // forms (`cat` of the token file, the Read tool) were proved there too, but
     // only Bash forms are modelled below.
-    probe: "credential denies (stub supabase, scratch HOME)",
+    probe: "credential denies (stub supabase, real HOME, scratch settings)",
     lastProof: "round 8, commit 'project-bootstrap: cross-repo conventions, credential convention, session-start check; case study genericized'",
-    deny: CREDENTIAL_DENIES,
+    deny: CREDENTIAL_DENIES_R8,
     ask: [] as string[],
     covered: [
       "echo $SUPABASE_ACCESS_TOKEN", "printenv", "env",
       "env -u SUPABASE_ACCESS_TOKEN supabase db push", "SUPABASE_ACCESS_TOKEN=x supabase db push",
+    ],
+  },
+  {
+    // One child, slug order-desk, stub supabase and stub npx first on PATH, the
+    // real HOME, rules from a scratch settings file. The last form must be
+    // allowed; it is checked by the plain-command test below.
+    probe: "credential denies with npx supabase (stub supabase and npx, real HOME, scratch settings)",
+    lastProof: "round 9, commit 'dev-tools adopts its own push guard, rules and pre-flight check; bootstrap follow-ups (CLI-token row, npx deny, profile files, probe record)'",
+    deny: CREDENTIAL_DENIES,
+    ask: [] as string[],
+    covered: [
+      "npx supabase db push", "npx supabase functions deploy demo", "env supabase db push",
+      "env -u SUPABASE_ACCESS_TOKEN supabase db push",
     ],
   },
 ];
@@ -177,7 +192,7 @@ describe("permission rules SKILL.md writes", () => {
 
   it("plain CLI calls and the session-start check pass the credential denies", () => {
     const bash = CREDENTIAL_DENIES.filter((r) => r.startsWith("Bash("));
-    for (const cmd of ["supabase functions deploy demo", "supabase gen types typescript --linked", "sh scripts/session-start.sh", "set -e"])
+    for (const cmd of ["supabase functions deploy demo", "supabase gen types typescript --linked", "sh scripts/session-start.sh", "set -e", "npx vitest run"])
       expect(matchesAny(bash, cmd), cmd).toBe(false);
   });
 
@@ -315,7 +330,7 @@ describe("the conventions document", () => {
 
   it("bootstrap reads it, and the CLI row and the credential limit point at it", () => {
     expect(skill()).toContain("Read every template from this checkout: `templates/` next to this file, `reference/conventions.md`,");
-    expect(skill()).toContain("the report gives the setup from `reference/conventions.md` section 1 | Supabase |");
+    expect(skill()).toContain("the report gives the setup from `reference/conventions.md` section 1 | the project exists |");
     expect(skill()).toContain("- **The credential denies match command text and named paths, so these pass them:**");
   });
 });
@@ -412,5 +427,108 @@ describe("planning chats read the repo by sparse clone", () => {
     expect(k).toContain("attach `michaelkwright/dev-tools` read-only with the repo tool (`add_repo`, access `read`) and sparse-clone only `README.md`, `GETTING-STARTED.md` and `skills/project-bootstrap/`");
     expect(k).toContain("--filter=blob:none --sparse");
     expect(k).toContain("If this chat has no repo tool, ask me to paste the README.");
+  });
+});
+
+describe("round-9 follow-ups in the text", () => {
+  const conv = () => read("reference/conventions.md");
+  const gs = () => readFileSync(fileURLToPath(new URL("../../../../GETTING-STARTED.md", import.meta.url)), "utf8");
+  const rows = () => skill().split("\n").filter((l) => l.startsWith("| "));
+  const rowIndex = (start: string) => rows().findIndex((l) => l.startsWith(start));
+
+  it("the CLI-token row is a project-exists follow-up after the connector-names row, and the early paths skip it", () => {
+    const cli = rowIndex('| "Will Claude Code run the Supabase CLI');
+    expect(cli).toBeGreaterThan(rowIndex('| "What are their names?'));
+    expect(rows()[cli].endsWith("| the project exists |")).toBe(true);
+    expect(skill()).toContain("strip its `connectors`, `migration-deny` and `supabase-cli` blocks");
+    expect(skill()).toContain("do not ask the CLI-token question, and give");
+    expect(skill()).toContain("(not asked with no backend or no connectors yet: the block stripped, and the report says the question waits until the connectors exist)");
+  });
+
+  it("step 5c names npx beside env as unstripped, and denies the npx form", () => {
+    expect(skill()).toContain("`env` and `npx` are not among the wrappers Claude Code strips before matching, so `env ... supabase ...` is matched as an `env` command and `npx supabase ...` as an `npx` command");
+    expect(CREDENTIAL_DENIES.indexOf("Bash(npx supabase*)")).toBe(CREDENTIAL_DENIES.indexOf("Bash(env *supabase*)") + 1);
+    const bash = CREDENTIAL_DENIES.filter((r) => r.startsWith("Bash("));
+    for (const cmd of ["npx supabase db push", "npx supabase functions deploy demo", "env supabase db push"])
+      expect(matchesAny(bash, cmd), cmd).toBe(true);
+  });
+
+  it("step 5c has the third merge case with the stanza's path parameter", () => {
+    expect(skill()).toContain("- `core.hooksPath` already names `.githooks` and `.githooks/pre-push` exists: write the guard as `.githooks/push-guard`, and add the stanza to `.githooks/pre-push` with `<guard path>` set to `.githooks/push-guard`. The setup line is unchanged.");
+    expect(skill()).toContain("# Push guard: refuses force pushes and remote ref deletions (<guard path>)");
+  });
+
+  it("step 2 lists the session-start script among the pieces", () => {
+    expect(skill()).toContain("or its stanza in an existing hook); `scripts/session-start.sh`; and the `.gitignore` lines.");
+  });
+
+  it("step 6 report says to run the scrub gate after a registration", () => {
+    expect(skill()).toContain("(`scripts/scrub.sh` from the dev-tools checkout, in the foreground, unpiped) and the new stems triaged before its next push.");
+    expect(conv()).toContain("so dev-tools' scrub gate is run after any registration and the new stems triaged before its next push.");
+  });
+
+  it("the profile file is the one the shell reads, in conventions and GETTING-STARTED", () => {
+    const names = "`~/.zshrc` for zsh";
+    expect(conv()).toContain("the file your shell reads when it starts: `~/.zshrc` for zsh (the Mac default), `~/.bash_profile` for bash on a Mac, `~/.bashrc` for bash on Linux; check it with `zsh -n` or `bash -n` to match");
+    expect(gs()).toContain(names);
+    expect(gs()).toContain("`~/.bash_profile` for bash on a Mac; `~/.bashrc` for bash on Linux; check it with `zsh -n` or `bash -n` to match");
+    expect(gs()).not.toContain("`~/.bashrc` on Linux)");
+  });
+
+  it("Known limits says blockReadsOutsideWorkingDirectories is not the answer", () => {
+    expect(conv()).toContain("`permissions.blockReadsOutsideWorkingDirectories` is not the answer: with it on, a skill still loads through its `~/.claude/skills` symlink but cannot read its own files, which breaks any skill that reads its templates, project-bootstrap included.");
+  });
+});
+
+// dev-tools' own copies of what it publishes. PIN_ROOT points the checks at a
+// scratch copy of the repo root, for the break-and-restore proof.
+describe("dev-tools adopts its own push guard, rules and pre-flight check", () => {
+  const root = process.env.PIN_ROOT ?? fileURLToPath(new URL("../../../../", import.meta.url));
+  const own = (rel: string) => readFileSync(`${root}${rel}`, "utf8");
+  // Everything below the first comment block after the shebang.
+  const belowHeader = (src: string) => {
+    const lines = src.split("\n");
+    let i = 1;
+    while (i < lines.length && lines[i].startsWith("#")) i++;
+    return lines.slice(i).join("\n");
+  };
+
+  it(".claude/settings.json holds exactly the push denies and the push asks", () => {
+    const settings = JSON.parse(own(".claude/settings.json"));
+    expect(Object.keys(settings)).toEqual(["permissions"]);
+    expect(Object.keys(settings.permissions).sort()).toEqual(["ask", "deny"]);
+    expect(settings.permissions.deny).toEqual(PUSH_DENIES);
+    expect(settings.permissions.ask).toEqual(PUSH_ASKS);
+  });
+
+  it(".gitignore keeps settings.local.json out", () => {
+    expect(own(".gitignore").split("\n")).toContain(".claude/settings.local.json");
+  });
+
+  it(".githooks/push-guard is the template below its header, with its own provenance line, and executable", () => {
+    const guard = own(".githooks/push-guard");
+    expect(guard.split("\n")[0]).toBe("#!/bin/sh");
+    expect(guard).toContain("# Push guard. A copy of this repo's own templates/pre-push.tmpl, held\n# byte-identical to it below that line by the project-bootstrap contract test.\n");
+    expect(guard).not.toMatch(/\{\{|[0-9a-f]{40}/);
+    expect(belowHeader(guard)).toBe(belowHeader(read("templates/pre-push.tmpl")));
+    expect(belowHeader(guard).length).toBeGreaterThan(500);
+    expect(statSync(`${root}.githooks/push-guard`).mode & 0o111).toBeGreaterThan(0);
+  });
+
+  it(".githooks/pre-push runs the guard's stanza first, then the scrub gate", () => {
+    const hook = own(".githooks/pre-push");
+    const stanza = skill().match(/```sh\n( *# Push guard:[^]*?)\n *```/)?.[1].replace(/^ {2}/gm, "").replaceAll("<guard path>", ".githooks/push-guard");
+    expect(stanza).toContain('/.githooks/push-guard" "$@"');
+    expect(hook.split("\n").slice(1).join("\n").startsWith(`${stanza}\n`)).toBe(true);
+    expect(hook).toContain("scripts/scrub.sh");
+    expect(statSync(`${root}.githooks/pre-push`).mode & 0o111).toBeGreaterThan(0);
+  });
+
+  it("scripts/session-start.sh is the template's push-guard block, executable", () => {
+    const script = own("scripts/session-start.sh");
+    const block = read("templates/session-start.sh.tmpl").split("# BEGIN:push-guard\n")[1].split("# END:push-guard\n")[0];
+    expect(script).toContain(block);
+    expect(script).not.toMatch(/\{\{|^# (BEGIN|END):|TEMPLATE NOTES|SUPABASE/m);
+    expect(statSync(`${root}scripts/session-start.sh`).mode & 0o111).toBeGreaterThan(0);
   });
 });

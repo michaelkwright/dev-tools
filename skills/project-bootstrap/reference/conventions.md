@@ -36,6 +36,8 @@ case "$PWD" in
 esac
 ```
 
+The arm names the folder the repo actually lives in; `$HOME/projects/<slug>` is the layout GETTING-STARTED section 3 sets up, so change both patterns in the arm if yours lives elsewhere.
+
 The profile runs once, when the shell starts, so a terminal opened in another folder and then moved into the project has no token: open a new terminal in the project's folder.
 
 **Every CLI call is the plain command, `supabase ...`, never prefixed by `env`, an inline assignment, `npx`, `sh -c` or any wrapper.**
@@ -74,8 +76,8 @@ Why: each report can change what the next prompt should say, and a prompt that r
 
 Stop points are anything only the human can clear: a dashboard paste, a spend approval, grading, an on-device check, a push or deploy ask.
 
-- Implemented in: the instructions template's Drafting Claude Code Prompts section (model by role, one copy-paste block, one prompt at a time, ask-rule prompts are not unattended). The stop-point scoping line is a convention; not yet in the template.
-- Invariant: one block, the model by role, one prompt at a time.
+- Implemented in: the instructions template's Drafting Claude Code Prompts section (model by role, one copy-paste block, one prompt at a time, scoped to two stop points, ask-rule prompts are not unattended).
+- Invariant: one block, the model by role, one prompt at a time, scoped to two stop points.
 - Project-owned: the model mapping, and the project's own stop points.
 
 ## 4. Spend

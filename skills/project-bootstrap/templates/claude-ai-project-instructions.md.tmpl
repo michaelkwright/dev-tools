@@ -140,6 +140,9 @@ Why: a nested fence closes the block early and splits the paste.
 **Draft sequential prompts one at a time, and wait for the pasted summary before drafting the next.**
 Why: each summary can change what the next prompt should say.
 
+**Scope each prompt to the work between two stop points: anything only the human can clear (a dashboard paste, a spend approval, grading, an on-device check, a push or deploy ask); a prompt that would run past one ends at it.**
+Why: a prompt that runs past a stop point either stalls there or skips it.
+
 **Ask clarifying questions first when scope, UI placement or edge-case behavior is unclear.**
 Why: a question costs one message; a wrong prompt costs a build and its rollback.
 

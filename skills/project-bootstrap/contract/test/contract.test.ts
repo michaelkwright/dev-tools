@@ -515,17 +515,57 @@ describe("open items after the conventions round", () => {
     expect(t.split(GUARD).length - 1).toBe(1);
   });
 
-  it("convention section 5 moved into the template; sections 3, 7 and 9 still wait", () => {
+  it("convention sections 3 and 5 are in the template; sections 7 and 9 still wait", () => {
     const c = conv();
     const s5 = section(c, "## 5.", "## 6.");
     expect(s5).toContain("**A paste block guards the exact live state it was written against, so it fails rather than applies when that state has moved.**");
     expect(s5).toContain("the paste guard on the by-hand path");
     expect(s5).not.toContain(MARKER);
-    expect(section(c, "## 3.", "## 4.")).toContain(MARKER);
+    expect(section(c, "## 3.", "## 4.")).not.toContain(MARKER);
     expect(section(c, "## 7.", "## 8.")).toContain(MARKER);
     expect(section(c, "## 9.", "## 10.")).toContain(MARKER);
-    expect(section(c, "## 1.").split(MARKER).length - 1).toBe(3);
+    expect(section(c, "## 1.").split(MARKER).length - 1).toBe(2);
     expect(section(c, "## 0.", "## 1.")).toContain('A line marked "convention; not yet in the template"');
+  });
+});
+
+describe("the repo folder and stop points", () => {
+  const conv = () => read("reference/conventions.md");
+  const gs = () => readFileSync(fileURLToPath(new URL("../../../../GETTING-STARTED.md", import.meta.url)), "utf8");
+  const section = (text: string, from: string, to?: string) => {
+    const start = text.indexOf(from);
+    expect(start, from).toBeGreaterThanOrEqual(0);
+    const rest = text.slice(start);
+    if (!to) return rest;
+    const end = rest.indexOf(to, from.length);
+    expect(end, to).toBeGreaterThan(0);
+    return rest.slice(0, end);
+  };
+  const ARM = "The arm names the folder the repo actually lives in; `$HOME/projects/<slug>` is the layout GETTING-STARTED section 3 sets up, so change both patterns in the arm if yours lives elsewhere.";
+  const SCOPE = "**Scope each prompt to the work between two stop points: anything only the human can clear (a dashboard paste, a spend approval, grading, an on-device check, a push or deploy ask); a prompt that would run past one ends at it.**";
+
+  it("the profile arm's folder paragraph sits between the snippet and the once-per-shell paragraph", () => {
+    const c = conv();
+    const arm = c.indexOf(ARM);
+    expect(arm).toBeGreaterThanOrEqual(0);
+    expect(c.split(ARM).length - 1).toBe(1);
+    expect(arm).toBeGreaterThan(c.indexOf("esac"));
+    expect(arm).toBeLessThan(c.indexOf("The profile runs once, when the shell starts"));
+  });
+
+  it("GETTING-STARTED step 3 tells the reader to change the arm's two paths", () => {
+    expect(section(gs(), "### CLI token", "## 8.")).toContain("and the arm's two paths changed to the project's folder if it isn't under `~/projects`.");
+  });
+
+  it("the stop-point scoping line is in the instructions template, and section 3 says so", () => {
+    const t = read("templates/claude-ai-project-instructions.md.tmpl");
+    expect(t.split(SCOPE).length - 1).toBe(1);
+    const i = t.indexOf(SCOPE);
+    expect(i).toBeGreaterThan(t.indexOf("**Draft sequential prompts one at a time"));
+    expect(i).toBeLessThan(t.indexOf("**Ask clarifying questions first"));
+    const s3 = section(conv(), "## 3.", "## 4.");
+    expect(s3).toContain("scoped to two stop points, ask-rule prompts are not unattended).");
+    expect(s3).toContain("- Invariant: one block, the model by role, one prompt at a time, scoped to two stop points.");
   });
 });
 

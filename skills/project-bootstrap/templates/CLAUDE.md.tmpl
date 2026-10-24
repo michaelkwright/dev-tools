@@ -239,6 +239,9 @@ Depth on RLS, column grants, views and definer functions lives in the dev-tools 
 <!-- BEGIN:schema-by-hand -->
 **Apply schema changes by hand in the dashboard SQL editor; `supabase db push` is denied at the permission layer (`.claude/settings.json`).**
 Why: the CLI's migration history conflicts with changes applied by hand, and the push fails; the deny rule is committed so it travels with every clone.
+
+**Every paste file opens with a guard that checks the live state it was written against (each object it creates is absent, each one it alters matches what was read, a function by `md5(prosrc)`) and raises if any differs, so the paste fails whole instead of applying.**
+Why: a paste written against yesterday's schema applies cleanly to today's and does something else, and the rolled-back proof vouched only for the state it ran on.
 <!-- END:schema-by-hand -->
 <!-- BEGIN:schema-by-claude -->
 **Claude Code applies schema changes only with the writable connector's `apply_migration`, one migration per change, and an ask rule in `.claude/settings.json` puts each call in front of the user; `supabase db push` is denied at the permission layer.**

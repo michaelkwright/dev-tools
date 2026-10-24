@@ -156,13 +156,13 @@ The Supabase CLI (the `supabase` command, used for deploys and generated types) 
    ```
 
 3. Add the shell snippet from [`skills/project-bootstrap/reference/conventions.md`](skills/project-bootstrap/reference/conventions.md) (section 1) to your shell profile (the file your shell reads when it starts: `~/.zshrc` for zsh, the Mac default; `~/.bash_profile` for bash on a Mac; `~/.bashrc` for bash on Linux; check it with `zsh -n` or `bash -n` to match), with your folder name in place of `<slug>`. It loads the token only in terminals opened in that project's folder.
-4. Check the profile for typing mistakes; this prints nothing when it is fine. For `~/.bashrc`:
+4. Check the profile for typing mistakes; this prints nothing when it is fine. For `~/.zshrc`:
 
    ```bash
-   bash -n ~/.bashrc
+   zsh -n ~/.zshrc
    ```
 
-   For `~/.zshrc`, run `zsh -n ~/.zshrc` instead.
+   For `~/.bash_profile` or `~/.bashrc`, run `bash -n` on that file instead.
 
 5. Open a new terminal in the project's folder, so the profile runs again.
 6. Sign the CLI out of your account, so it can only use the project's token:

@@ -92,11 +92,11 @@ Why: a retry loop can spend far more than the task needs before anyone looks.
 **Database changes are SQL paste files, each proved by a rolled-back probe before the human pastes it; `supabase db push` is denied, and `apply_migration` is denied or asked.**
 Why: a paste is the one step no test sees, so its proof has to come before it.
 
-**A paste block guards the exact live state it was written against, so it fails rather than applies when that state has moved.** (convention; not yet in the template)
+**A paste block guards the exact live state it was written against, so it fails rather than applies when that state has moved.**
 Why: a paste written against yesterday's schema applies cleanly to today's and does something else.
 
-- Implemented in: `CLAUDE.md.tmpl`'s `database` block (the rolled-back proof) and `schema-by-hand` / `schema-by-claude` blocks; `SKILL.md` step 5c (`supabase db push` denies, `apply_migration` deny or ask); the `supabase-hardening` skill.
-- Invariant: the rolled-back proof, the push deny, `apply_migration` never unruled.
+- Implemented in: `CLAUDE.md.tmpl`'s `database` block (the rolled-back proof) and `schema-by-hand` / `schema-by-claude` blocks (the `schema-by-hand` block carries the paste guard); `SKILL.md` step 5c (`supabase db push` denies, `apply_migration` deny or ask); the `supabase-hardening` skill.
+- Invariant: the rolled-back proof, the paste guard on the by-hand path, the push deny, `apply_migration` never unruled.
 - Project-owned: which schema path (by hand or by Claude), and the paste files.
 
 ## 6. Docs and handoffs
@@ -135,7 +135,9 @@ Why: a pre-flight check kept only in prose is rebuilt from memory each session, 
 Why: parallel sessions share one machine and one account, so anything account-wide lets one project's session act on another's data.
 
 **Any change to the shell profile, `~/.config`, a shared account, dev-tools or a cross-project convention is checked against every project before it is applied.** (convention; not yet in the template)
-Why: those are the places every project reads from, so a change made for one lands in all of them. Registering a project's file names in the scrub config can turn plain words into blocking stems, so dev-tools' scrub gate is run after any registration and the new stems triaged before its next push.
+Why: those are the places every project reads from, so a change made for one lands in all of them.
+
+Registering a project's file names in the scrub config can turn plain words into blocking stems, so dev-tools' scrub gate is run after any registration and the new stems triaged before its next push.
 
 - Implemented in: `CLAUDE.md.tmpl` Session Workflow (the parallel-session rule) and `connectors` block; `SKILL.md` step 3 (scoped connectors, the account-wide refusal); section 1 above; `GETTING-STARTED.md` section 8.
 - Invariant: the parallel-session rule, connectors and credentials scoped to one project.

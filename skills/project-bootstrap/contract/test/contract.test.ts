@@ -480,6 +480,55 @@ describe("round-9 follow-ups in the text", () => {
   });
 });
 
+describe("open items after the conventions round", () => {
+  const conv = () => read("reference/conventions.md");
+  const gs = () => readFileSync(fileURLToPath(new URL("../../../../GETTING-STARTED.md", import.meta.url)), "utf8");
+  const section = (text: string, from: string, to?: string) => {
+    const start = text.indexOf(from);
+    expect(start, from).toBeGreaterThanOrEqual(0);
+    const rest = text.slice(start);
+    if (!to) return rest;
+    const end = rest.indexOf(to, from.length);
+    expect(end, to).toBeGreaterThan(0);
+    return rest.slice(0, end);
+  };
+  const MARKER = "not yet in the template";
+  const GUARD = "**Every paste file opens with a guard that checks the live state it was written against (each object it creates is absent, each one it alters matches what was read, a function by `md5(prosrc)`) and raises if any differs, so the paste fails whole instead of applying.**";
+
+  it("the profile check names zsh first and every bash file after", () => {
+    const s7 = section(gs(), "### CLI token", "## 8.");
+    expect(s7).toContain("zsh -n ~/.zshrc");
+    expect(s7).toContain("For `~/.bash_profile` or `~/.bashrc`, run `bash -n` on that file instead.");
+    expect(s7).not.toContain("For `~/.bashrc`:");
+  });
+
+  it("the section 9 Why line and the scrub-registration sentence are separate paragraphs", () => {
+    expect(conv()).toContain("lands in all of them.\n\nRegistering a project's file names in the scrub config");
+  });
+
+  it("the paste guard is in the schema-by-hand block of the Supabase section, once in the file", () => {
+    const t = read("templates/CLAUDE.md.tmpl");
+    const sup = section(t, "## Supabase", "## Running in auto mode");
+    expect(sup.split("<!-- BEGIN:schema-by-hand -->").length - 1).toBe(1);
+    const block = section(sup, "<!-- BEGIN:schema-by-hand -->", "<!-- END:schema-by-hand -->");
+    expect(block).toContain(GUARD);
+    expect(t.split(GUARD).length - 1).toBe(1);
+  });
+
+  it("convention section 5 moved into the template; sections 3, 7 and 9 still wait", () => {
+    const c = conv();
+    const s5 = section(c, "## 5.", "## 6.");
+    expect(s5).toContain("**A paste block guards the exact live state it was written against, so it fails rather than applies when that state has moved.**");
+    expect(s5).toContain("the paste guard on the by-hand path");
+    expect(s5).not.toContain(MARKER);
+    expect(section(c, "## 3.", "## 4.")).toContain(MARKER);
+    expect(section(c, "## 7.", "## 8.")).toContain(MARKER);
+    expect(section(c, "## 9.", "## 10.")).toContain(MARKER);
+    expect(section(c, "## 1.").split(MARKER).length - 1).toBe(3);
+    expect(section(c, "## 0.", "## 1.")).toContain('A line marked "convention; not yet in the template"');
+  });
+});
+
 // dev-tools' own copies of what it publishes. PIN_ROOT points the checks at a
 // scratch copy of the repo root, for the break-and-restore proof.
 describe("dev-tools adopts its own push guard, rules and pre-flight check", () => {

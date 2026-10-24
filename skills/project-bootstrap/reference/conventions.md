@@ -14,6 +14,8 @@ Each convention below is one bold principle with a `Why:` line, then three lines
 
 A line marked "convention; not yet in the template" is agreed but carried by no template yet, so a repo cannot drift from it.
 
+A line marked "planning-chat convention" is carried by a planning chat that oversees several projects, not by any repo: a repo's own sessions cannot see the other projects it would check against. A drift audit does not check it.
+
 **A repo drifts when a rule bootstrap wrote is missing or loosened, an invariant line is reworded, or a block that should be kept is stripped.**
 Why: each of the three leaves a repo looking set up while one protection is gone, and none of them fails a build.
 
@@ -136,7 +138,7 @@ Why: a pre-flight check kept only in prose is rebuilt from memory each session, 
 **Assume another project's session may be running on this machine; each project has one connector pair and one credential of its own, and nothing account-wide.**
 Why: parallel sessions share one machine and one account, so anything account-wide lets one project's session act on another's data.
 
-**Any change to the shell profile, `~/.config`, a shared account, dev-tools or a cross-project convention is checked against every project before it is applied.** (convention; not yet in the template)
+**Any change to the shell profile, `~/.config`, a shared account, dev-tools or a cross-project convention is checked against every project before it is applied.** (planning-chat convention)
 Why: those are the places every project reads from, so a change made for one lands in all of them.
 
 Registering a project's file names in the scrub config can turn plain words into blocking stems, so dev-tools' scrub gate is run after any registration and the new stems triaged before its next push.

@@ -515,7 +515,7 @@ describe("open items after the conventions round", () => {
     expect(t.split(GUARD).length - 1).toBe(1);
   });
 
-  it("convention sections 3 and 5 are in the template; sections 7 and 9 still wait", () => {
+  it("sections 3 and 5 are in the template, section 7 still waits, section 9 is a planning-chat convention", () => {
     const c = conv();
     const s5 = section(c, "## 5.", "## 6.");
     expect(s5).toContain("**A paste block guards the exact live state it was written against, so it fails rather than applies when that state has moved.**");
@@ -523,8 +523,9 @@ describe("open items after the conventions round", () => {
     expect(s5).not.toContain(MARKER);
     expect(section(c, "## 3.", "## 4.")).not.toContain(MARKER);
     expect(section(c, "## 7.", "## 8.")).toContain(MARKER);
-    expect(section(c, "## 9.", "## 10.")).toContain(MARKER);
-    expect(section(c, "## 1.").split(MARKER).length - 1).toBe(2);
+    expect(section(c, "## 9.", "## 10.")).not.toContain(MARKER);
+    expect(section(c, "## 9.", "## 10.")).toContain("cross-project convention is checked against every project before it is applied.** (planning-chat convention)");
+    expect(section(c, "## 1.").split(MARKER).length - 1).toBe(1);
     expect(section(c, "## 0.", "## 1.")).toContain('A line marked "convention; not yet in the template"');
   });
 });
@@ -566,6 +567,25 @@ describe("the repo folder and stop points", () => {
     const s3 = section(conv(), "## 3.", "## 4.");
     expect(s3).toContain("scoped to two stop points, ask-rule prompts are not unattended).");
     expect(s3).toContain("- Invariant: one block, the model by role, one prompt at a time, scoped to two stop points.");
+  });
+});
+
+describe("planning-chat conventions", () => {
+  const conv = () => read("reference/conventions.md");
+  const section = (text: string, from: string, to: string) => {
+    const start = text.indexOf(from);
+    expect(start, from).toBeGreaterThanOrEqual(0);
+    const rest = text.slice(start);
+    const end = rest.indexOf(to, from.length);
+    expect(end, to).toBeGreaterThan(0);
+    return rest.slice(0, end);
+  };
+  const DEF = 'A line marked "planning-chat convention" is carried by a planning chat that oversees several projects, not by any repo: a repo\'s own sessions cannot see the other projects it would check against. A drift audit does not check it.';
+
+  it("section 0 defines the term, and the term marks exactly one line", () => {
+    const c = conv();
+    expect(section(c, "## 0.", "## 1.")).toContain(DEF);
+    expect(c.split("(planning-chat convention)").length - 1).toBe(1);
   });
 });
 

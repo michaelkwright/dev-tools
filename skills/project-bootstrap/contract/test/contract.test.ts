@@ -515,18 +515,62 @@ describe("open items after the conventions round", () => {
     expect(t.split(GUARD).length - 1).toBe(1);
   });
 
-  it("sections 3 and 5 are in the template, section 7 still waits, section 9 is a planning-chat convention", () => {
+  it("sections 3, 5 and 7 are in the template, section 9 is a planning-chat convention", () => {
     const c = conv();
     const s5 = section(c, "## 5.", "## 6.");
     expect(s5).toContain("**A paste block guards the exact live state it was written against, so it fails rather than applies when that state has moved.**");
     expect(s5).toContain("the paste guard on the by-hand path");
     expect(s5).not.toContain(MARKER);
     expect(section(c, "## 3.", "## 4.")).not.toContain(MARKER);
-    expect(section(c, "## 7.", "## 8.")).toContain(MARKER);
+    expect(section(c, "## 7.", "## 8.")).not.toContain(MARKER);
     expect(section(c, "## 9.", "## 10.")).not.toContain(MARKER);
     expect(section(c, "## 9.", "## 10.")).toContain("cross-project convention is checked against every project before it is applied.** (planning-chat convention)");
-    expect(section(c, "## 1.").split(MARKER).length - 1).toBe(1);
+    expect(section(c, "## 1.").split(MARKER).length - 1).toBe(0);
     expect(section(c, "## 0.", "## 1.")).toContain('A line marked "convention; not yet in the template"');
+  });
+});
+
+describe("the related run before the gate", () => {
+  const section = (text: string, from: string, to: string) => {
+    const start = text.indexOf(from);
+    expect(start, from).toBeGreaterThanOrEqual(0);
+    const rest = text.slice(start);
+    const end = rest.indexOf(to, from.length);
+    expect(end, to).toBeGreaterThan(0);
+    return rest.slice(0, end);
+  };
+  const RULE = "**Before the gate, run the tests that import the changed files: `{{RELATED_TEST_CMD}}`, with the files `git diff --name-only HEAD` and `git ls-files --others --exclude-standard` list, in the foreground and unpiped. Then, for every symbol the change renamed, removed or changed the meaning of, run `command grep -rnw --exclude-dir=node_modules --exclude-dir=.git <symbol> .` and check each hit. A related run that reports no test files found has tested nothing; say so in the report. It is a scoped run, not a full one; after a fix, rerun it, not the suite.**";
+
+  it("TEMPLATE NOTES documents RELATED_TEST_CMD between SCOPED_TEST_CMD and TEST_RUNNER_PROC", () => {
+    const notes = section(read("templates/CLAUDE.md.tmpl"), "TEMPLATE NOTES", "-->");
+    const line = notes.split("\n").find((l) => l.trimStart().startsWith("RELATED_TEST_CMD"));
+    expect(line).toBeDefined();
+    expect(line).toContain("Default: npx vitest related --run <changed files>");
+    const at = notes.indexOf("  RELATED_TEST_CMD ");
+    expect(notes.indexOf("  SCOPED_TEST_CMD ")).toBeLessThan(at);
+    expect(at).toBeLessThan(notes.indexOf("  TEST_RUNNER_PROC "));
+  });
+
+  it("the session order runs it after the restore and before the spec-update protocol", () => {
+    const order = section(read("templates/CLAUDE.md.tmpl"), "**Session order:", ".**\n");
+    const restore = order.indexOf("restore by copy and confirm with `diff`");
+    const related = order.indexOf("(`{{RELATED_TEST_CMD}}`)");
+    expect(restore).toBeGreaterThan(0);
+    expect(related).toBeGreaterThan(restore);
+    expect(order.indexOf("spec-update protocol")).toBeGreaterThan(related);
+  });
+
+  it("the rule is in the Gates section, once in the file", () => {
+    const t = read("templates/CLAUDE.md.tmpl");
+    expect(t.split(RULE).length - 1).toBe(1);
+    expect(section(t, "## Gates", "<!-- BEGIN:scheduled-ci -->")).toContain(RULE);
+  });
+
+  it("conventions section 7 carries the principle unmarked, and its invariant names the related run", () => {
+    const s7 = section(read("reference/conventions.md"), "## 7.", "## 8.");
+    expect(s7).toContain("**Before the gate, `vitest related` over the changed files plus a grep for every changed symbol.**\n");
+    const invariant = s7.split("\n").find((l) => l.startsWith("- Invariant:"));
+    expect(invariant).toContain("the related run and symbol grep before the gate");
   });
 });
 

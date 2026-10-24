@@ -117,11 +117,11 @@ Why: two copies of a rule drift apart, and state left in a superseded handoff di
 **Scoped runs while iterating; one full run on the final bytes; a nightly scheduled run as the backstop, with a session-start check of its latest result.**
 Why: every full run before the last proves nothing the last does not, and a backstop nobody reads catches nothing.
 
-**Before the gate, `vitest related` over the changed files plus a grep for every changed symbol.** (convention; not yet in the template)
-Why: a scoped run of the touched file misses the tests that import it, and a renamed symbol can survive in a file no import reaches.
+**Before the gate, `vitest related` over the changed files plus a grep for every changed symbol.**
+Why: a scoped run of the touched file misses the tests that import it, and `vitest related` follows only static imports, so a renamed symbol can survive in a file no import reaches.
 
-- Implemented in: `CLAUDE.md.tmpl`'s Gates section (session order, one full suite per session) and `scheduled-ci` block; `session-start.sh.tmpl`'s `scheduled-ci` block; the `ci-minutes-audit` skill's scheduled-suite shape.
-- Invariant: one full suite per session, on the final bytes; the scheduled run checked at pre-flight.
+- Implemented in: `CLAUDE.md.tmpl`'s Gates section (session order, the related run and symbol grep, one full suite per session) and `scheduled-ci` block; `session-start.sh.tmpl`'s `scheduled-ci` block; the `ci-minutes-audit` skill's scheduled-suite shape.
+- Invariant: the related run and symbol grep before the gate; one full suite per session, on the final bytes; the scheduled run checked at pre-flight.
 - Project-owned: the commands, the timezones and the schedule.
 
 ## 8. Session-start check

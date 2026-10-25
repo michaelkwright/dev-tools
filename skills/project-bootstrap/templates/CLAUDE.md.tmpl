@@ -265,8 +265,8 @@ supabase functions deploy <name> --project-ref {{SUPABASE_PROJECT_REF}} > deploy
 ```
 <!-- BEGIN:supabase-cli -->
 
-**The Supabase CLI's credential is the `SUPABASE_ACCESS_TOKEN` the shell set at start, loaded for this project only from `~/.config/{{PROJECT_SLUG}}/`, which sessions never read or write; run CLI commands plain (`supabase ...`), never through `env`, an inline assignment or a wrapper, and run the session-start check (`sh scripts/session-start.sh`) at pre-flight.**
-Why: committed rules match the command text from its start, so a wrapped form is a different string of the same action, and a session that needs a different credential has found a setup bug, not a reason to prefix.
+**The Supabase CLI's credential is the `SUPABASE_ACCESS_TOKEN` the committed SessionStart hook in `.claude/settings.json` loads at session start, for this project only, from `~/.config/{{PROJECT_SLUG}}/`, which sessions never read or write; run CLI commands plain (`supabase ...`), never through `env`, an inline assignment or a wrapper, never run `supabase login`, and run the session-start check (`sh scripts/session-start.sh`) at pre-flight. To confirm a documentation line that names the variable, or to write a commit message that does, put the text in a file and use `command grep -cxF -f <file>` or `git commit -F <file>`, for those two purposes only.**
+Why: committed rules match the command text from its start, so a wrapped form is a different string of the same action, a login stores an account-wide token the CLI falls back to, and a session that needs a different credential has found a setup bug, not a reason to prefix.
 <!-- END:supabase-cli -->
 
 **Run `REVOKE ALL ... FROM PUBLIC, anon, authenticated` before any targeted GRANT on a new function or table, and again after every DROP + CREATE; verify with the raw ACL.**
@@ -315,7 +315,7 @@ Facts:
 - Schema changes are applied by Claude Code with the writable connector's `apply_migration`, and each one asks the user first; a headless run cannot apply one.
 <!-- END:schema-by-claude -->
 <!-- BEGIN:supabase-cli -->
-- The Supabase CLI's credential, `SUPABASE_ACCESS_TOKEN`, is already in the environment; a session never prints, sets, unsets or overrides it.
+- The Supabase CLI's credential, `SUPABASE_ACCESS_TOKEN`, is already in the environment; a session never prints, sets, unsets or overrides it, and a session never runs `supabase login`.
 <!-- END:supabase-cli -->
 <!-- END:supabase -->
 - Throwaway targets are only the session's scratch directory and whatever the prompt names as throwaway; everything else is real.

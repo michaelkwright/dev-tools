@@ -142,8 +142,8 @@ Never add the writable one in Claude.ai, or with `--scope project`, and never us
 
 The Supabase CLI (the `supabase` command, used for deploys and generated types) needs its own **CLI token**. Give each project its own, limited to that project, and keep it outside the repo, where Claude Code is blocked from reading it. Do these steps yourself; Claude Code never handles the token. Below, `order-desk` stands for your project's folder name.
 
-1. In the Supabase dashboard, create an access token limited to this one project, with only the permissions it needs ([Supabase's access tokens](https://supabase.com/docs/guides/platform/personal-access-tokens)). Copy it.
-2. Save it in a file of its own, and make the file readable only by you:
+1. In the Supabase dashboard, create an access token limited to this one project, with only the permissions it needs ([Supabase's access tokens](https://supabase.com/docs/guides/platform/personal-access-tokens)). Copy it, and note the expiry date the dashboard shows.
+2. Save the token in a file of its own, and make the file readable only by you:
 
    ```bash
    mkdir -p ~/.config/order-desk
@@ -155,21 +155,29 @@ The Supabase CLI (the `supabase` command, used for deploys and generated types) 
    chmod 600 ~/.config/order-desk/supabase-token
    ```
 
-3. Add the shell snippet from [`skills/project-bootstrap/reference/conventions.md`](skills/project-bootstrap/reference/conventions.md) (section 1) to your shell profile (the file your shell reads when it starts: `~/.zshrc` for zsh, the Mac default; `~/.bash_profile` for bash on a Mac; `~/.bashrc` for bash on Linux; check it with `zsh -n` or `bash -n` to match), with your folder name in place of `<slug>`, and the arm's two paths changed to the project's folder if it isn't under `~/projects`. It loads the token only in terminals opened in that project's folder.
-4. Check the profile for typing mistakes; this prints nothing when it is fine. For `~/.zshrc`:
+3. Save the expiry date in a second file, `~/.config/order-desk/supabase-token-expires`: one line, written `YYYY-MM-DD`, exactly as the dashboard shows it. It is not a secret. Bootstrap's session-start check fails when this file is missing or the date has passed, and warns within 14 days of it, so update it whenever you replace the token.
+4. Nothing more is needed for Claude Code. Bootstrap writes a small "hook" into the repo's `.claude/settings.json` (an existing project gets it by a port), and it loads both files at the start of every Claude Code session, desktop app or terminal. You don't restart a terminal. If you set up the token after a session started, start the session again.
+5. Optional, only if you also run the CLI in your own terminal: add the shell snippet from [`skills/project-bootstrap/reference/conventions.md`](skills/project-bootstrap/reference/conventions.md) (section 1) to your shell profile (the file your shell reads when it starts: `~/.zshrc` for zsh, the Mac default; `~/.bash_profile` for bash on a Mac; `~/.bashrc` for bash on Linux; check it with `zsh -n` or `bash -n` to match), with your folder name in place of `<slug>`, and the arm's two paths changed to the project's folder if it isn't under `~/projects`. It loads the token only in terminals opened in that project's folder. Check the profile for typing mistakes; this prints nothing when it is fine. For `~/.zshrc`:
 
    ```bash
    zsh -n ~/.zshrc
    ```
 
-   For `~/.bash_profile` or `~/.bashrc`, run `bash -n` on that file instead.
+   For `~/.bash_profile` or `~/.bashrc`, run `bash -n` on that file instead. Then open a new terminal in the project's folder, so the profile runs again.
+6. Check that nothing else sets the token variable, because another source could hand the CLI a broader token. The variable's name is `SUPABASE_ACCESS_TOKEN`. Search for it in every shell startup file, in the `env` entries of `~/.claude/settings.json`, in every `.claude/settings*.json` hook in every project on your computer, and in any credential store the CLI reads from. For the shell files and the Claude settings, one search covers them (it prints file names only, never the value; change the last path if your projects live somewhere other than `~/projects`):
 
-5. Open a new terminal in the project's folder, so the profile runs again.
-6. Sign the CLI out of your account, so it can only use the project's token:
+   ```bash
+   grep -ls SUPABASE_ACCESS_TOKEN ~/.zshrc ~/.zprofile ~/.bash_profile ~/.bashrc ~/.profile ~/.claude/settings*.json ~/projects/*/.claude/settings*.json 2>/dev/null
+   ```
+
+   The only files it should list are your own profile (if you did step 5) and each project's `.claude/settings.json` (the hook). Claude Code can't run this search for you, because its own rules block any command that names the variable.
+7. Sign the CLI out of your account, so it can only use the project's token:
 
    ```bash
    supabase logout
    ```
+
+   Logging out removes only the copy on your computer. Every `supabase login` also creates an account-wide token in the dashboard that never expires, named `cli_` followed by your user, computer and time, and the CLI falls back to it whenever the project's token is missing. Open the dashboard's access tokens page and revoke every token whose name starts with `cli_`. After that, never sign in with `supabase login` again; Claude Code is blocked from running it too.
 
 ## 8. Running more than one project
 
@@ -199,6 +207,6 @@ For Supabase users:
 
 - **Project ref**: the short code naming your Supabase project, seen in its dashboard address after `/project/`. It isn't a password, but a public repo shouldn't hold it.
 - **Owner user ID**: your own account's ID in your app (dashboard: Authentication > Users). The planning chat uses it to count just your data.
-- **CLI token**: a password-like code the Supabase command line tool uses to reach one project. It lives in a file in `~/.config/`, outside your repo, and your terminal loads it only in that project's folder (section 7).
+- **CLI token**: a password-like code the Supabase command line tool uses to reach one project. It lives in a file in `~/.config/`, outside your repo, next to a second file, `supabase-token-expires`, that holds the token's expiry date; Claude Code loads the token only for that project (section 7).
 - **Read-only vs writable connector**: the two links between Claude and one Supabase project (section 7). The read-only one, in Claude.ai, can look but not change data; the writable one, in Claude Code only, can change data and is kept for Claude Code's careful, undone-afterwards checks. The planning chat uses only the read-only one.
 - **Why schema changes are applied by hand**: you paste them into the dashboard's SQL editor yourself. Supabase's push command keeps its own history that conflicts with hand-applied changes, so Claude Code is blocked from running it.

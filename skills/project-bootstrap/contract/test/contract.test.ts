@@ -448,7 +448,7 @@ describe("the session-start check", () => {
     expect(skill()).toContain("**Write the session-start check in every target: `templates/session-start.sh.tmpl`, filled, as `scripts/session-start.sh`, executable and committed");
     const t = read("templates/CLAUDE.md.tmpl");
     expect(t).toContain("a session runs the session-start check (`sh scripts/session-start.sh`) at pre-flight, which fails when `git config core.hooksPath` does not print `.githooks`.**");
-    expect(t).toContain("<!-- BEGIN:supabase-cli -->\n- The Supabase CLI's credential, `SUPABASE_ACCESS_TOKEN`, is already in the environment; a session never prints, sets, unsets or overrides it.\n<!-- END:supabase-cli -->");
+    expect(t).toContain("<!-- BEGIN:supabase-cli -->\n- The Supabase CLI's credential, `SUPABASE_ACCESS_TOKEN`, is already in the environment; a session never prints, sets, unsets or overrides it, and a session never runs `supabase login`.\n<!-- END:supabase-cli -->");
   });
 });
 
@@ -702,7 +702,71 @@ describe("the repo folder and stop points", () => {
     expect(i).toBeLessThan(t.indexOf("**Ask clarifying questions first"));
     const s3 = section(conv(), "## 3.", "## 4.");
     expect(s3).toContain("scoped to two stop points, ask-rule prompts are not unattended).");
-    expect(s3).toContain("- Invariant: one block, the model by role, one prompt at a time, scoped to two stop points.");
+    expect(s3).toContain("- Invariant: one block, the model by role, one prompt at a time, scoped to two stop points; a verbatim string from a named file at a named commit, confirmed with `command grep -cxF`, and nothing load-bearing on emphasis or a leading `#`.");
+  });
+});
+
+describe("the credential convention's prose", () => {
+  const conv = () => read("reference/conventions.md");
+  const gs = () => readFileSync(fileURLToPath(new URL("../../../../GETTING-STARTED.md", import.meta.url)), "utf8");
+  const section = (text: string, from: string, to: string) => {
+    const start = text.indexOf(from);
+    expect(start, from).toBeGreaterThanOrEqual(0);
+    const rest = text.slice(start);
+    const end = rest.indexOf(to, from.length);
+    expect(end, to).toBeGreaterThan(0);
+    return rest.slice(0, end);
+  };
+  const SELF = "**When a session must confirm a documentation line that names the variable, or write a commit message that does, it puts the text in a file and uses `command grep -cxF -f <file>` or `git commit -F <file>`; that form is for those two purposes only and never reads, prints, sets or compares the value.**";
+  const VERBATIM = "**A verbatim string a session must write comes from a named file at a named commit and is confirmed with `command grep -cxF`; nothing load-bearing in a prompt rides on Markdown emphasis or a leading `#`, because a chat input can drop them.**";
+  const INSTR_VERBATIM = "**When a prompt needs a verbatim string written, name the file and commit it comes from and confirm it with `command grep -cxF`; put nothing load-bearing in a prompt on Markdown emphasis or a leading `#`, since a chat input can drop them.**";
+  const TMPL_RULE = "**The Supabase CLI's credential is the `SUPABASE_ACCESS_TOKEN` the committed SessionStart hook in `.claude/settings.json` loads at session start, for this project only, from `~/.config/{{PROJECT_SLUG}}/`, which sessions never read or write; run CLI commands plain (`supabase ...`), never through `env`, an inline assignment or a wrapper, never run `supabase login`, and run the session-start check (`sh scripts/session-start.sh`) at pre-flight. To confirm a documentation line that names the variable, or to write a commit message that does, put the text in a file and use `command grep -cxF -f <file>` or `git commit -F <file>`, for those two purposes only.**";
+
+  it("section 1 states the hook, the sources list, the login rule, the expiry file and the sanctioned form", () => {
+    const s1 = section(conv(), "## 1.", "## 2.");
+    expect(s1).toContain("**A session's token comes from the committed SessionStart hook in `.claude/settings.json`, which writes the token file's path, never its value, into the env file Claude Code runs before each Bash command; the hook is pinned in the settings ratchet, because it is not a Bash tool call and no deny applies to it.**");
+    expect(s1).toContain("**The shell profile case arm is optional:");
+    expect(s1).not.toContain("and nothing else exports it anywhere");
+    expect(s1).toContain("every shell startup file, the env entries in `~/.claude/settings.json`, every `.claude/settings*.json` hook in every repo on the machine, and any credential store the CLI or a hook reads from. A session cannot run that search, since its own deny matches the name, so the human does.**");
+    expect(s1).toContain("every `supabase login` creates an account-wide token that never expires, named `cli_` followed by user, host and time");
+    expect(s1).toContain("revoke every `cli_` token in the dashboard, and never run `supabase login` once per-project tokens exist; the `Bash(supabase login*)` deny holds sessions to it.");
+    expect(s1).toContain("`~/.config/<slug>/supabase-token-expires`: one line, `YYYY-MM-DD`");
+    expect(s1).toContain("the session-start check fails when it is missing, malformed or past, and warns within 14 days");
+    expect(s1).toContain(SELF);
+    expect(s1).toContain("The hook is outside the denies, which is why it is pinned, and the env file holds a path, so reading it yields no secret.");
+    const inv = s1.split("\n").find((l) => l.startsWith("- Invariant:"))!;
+    for (const s of ["SUPABASE_TOKEN_EXPIRES", "~/.config/<slug>/supabase-token-expires", "Bash(supabase login*)", "CLAUDE_ENV_FILE"]) expect(inv, s).toContain(s);
+    expect(s1.split("\n").find((l) => l.startsWith("- Project-owned:"))).toBe("- Project-owned: the slug, the token, and the expiry date.");
+  });
+
+  it("section 3, the instructions template and the CLAUDE.md template carry the verbatim-string rule and the sanctioned form", () => {
+    const s3 = section(conv(), "## 3.", "## 4.");
+    expect(s3).toContain(VERBATIM);
+    expect(s3).toContain("The verbatim-string rule is stated above and in the same Drafting section (a named file, `command grep -cxF`).");
+    expect(read("templates/claude-ai-project-instructions.md.tmpl")).toContain(INSTR_VERBATIM);
+    const t = read("templates/CLAUDE.md.tmpl");
+    expect(t.split(TMPL_RULE).length - 1).toBe(1);
+    expect(t).toContain("Why: committed rules match the command text from its start, so a wrapped form is a different string of the same action, a login stores an account-wide token the CLI falls back to, and a session that needs a different credential has found a setup bug, not a reason to prefix.");
+    expect(t).toContain("a session never prints, sets, unsets or overrides it, and a session never runs `supabase login`.");
+  });
+
+  it("GETTING-STARTED section 7 orders the steps, names the expires file and the logout revocation", () => {
+    const s7 = section(gs(), "### CLI token", "## 8.");
+    const at = (s: string) => { const i = s7.indexOf(s); expect(i, s).toBeGreaterThanOrEqual(0); return i; };
+    const order = ["create an access token limited", "supabase-token`", "supabase-token-expires`", "hook", "Optional, only if you also run the CLI", "Check that nothing else sets", "supabase logout", "revoke every token whose name starts with `cli_`"].map(at);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(s7).toContain("YYYY-MM-DD");
+    expect(s7).not.toMatch(/20[0-9]{2}-[0-9]{2}/);
+    expect(gs()).toContain("next to a second file, `supabase-token-expires`, that holds the token's expiry date");
+  });
+
+  it("SKILL.md names both files in the CLI row, the hook's pin under the denies, and the setup in the report", () => {
+    expect(skill()).toContain("and its expiry date, as `YYYY-MM-DD`, at `~/.config/<slug>/supabase-token-expires`, both loaded by a hook in the repo's committed settings; are both files set up?");
+    expect(skill()).toContain("its control is its pin in the settings ratchet (`CONFIG.settingsRules.hooks`)");
+    expect(skill()).toContain("The SessionStart hook is outside the denies, which is why its command is pinned in the settings ratchet, and the env file it writes holds a path, so reading it yields no secret.");
+    expect(skill()).toContain("the report gives the [`reference/conventions.md`](reference/conventions.md) section 1 setup directly, not by reference to the file, with `<slug>` filled");
+    expect(skill()).toContain("written as a `~/` path in both patterns");
+    expect(skill()).toContain("When the answer was yes, the report names the hook written and the two files it expects.");
   });
 });
 

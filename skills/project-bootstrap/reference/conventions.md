@@ -21,13 +21,18 @@ Why: each of the three leaves a repo looking set up while one protection is gone
 
 ## 1. Credentials
 
-**One limited-permission credential per project, stored outside every repo at `~/.config/<slug>/supabase-token` with mode 600, loaded only in that project's shell.**
-Why: a shared credential becomes the one that one project revokes or mis-scopes for the other, and a shell that exports it for every folder hands one project's token to another's session.
+**One limited-permission credential per project, stored outside every repo at `~/.config/<slug>/supabase-token` with mode 600, loaded only in that project's sessions.**
+Why: a shared credential becomes the one that one project revokes or mis-scopes for the other, and anything that exports it for every folder hands one project's token to another's session.
 
 `<slug>` is the project name, lowercased, spaces as dashes (`order-desk`). Limited permission means a scoped access token from the Supabase dashboard, reaching this one project with only the permissions its CLI calls need ([Supabase's access tokens](https://supabase.com/docs/guides/platform/personal-access-tokens)).
 
-**The shell profile exports `SUPABASE_ACCESS_TOKEN` from that file only when the shell starts inside that project's repo folder, and nothing else exports it anywhere; check the profile with `bash -n` (`zsh -n` for a zsh profile) after editing it, then run `supabase logout`, so no account-wide login remains to fall back on.**
-Why: a CLI with a stored login falls back to it whenever the variable is missing, so a project whose token failed to load runs with the account's full reach and nothing says so.
+**A session's token comes from the committed SessionStart hook in `.claude/settings.json`, which writes the token file's path, never its value, into the env file Claude Code runs before each Bash command; the hook is pinned in the settings ratchet, because it is not a Bash tool call and no deny applies to it.**
+Why: the hook runs in every session, desktop or terminal, from the repo's own committed file, so no shell profile has to be right first; and since a deny cannot see the hook, only the ratchet turns an edit that makes it print the token into a failing run.
+
+The hook appends one `export` line to the env file, holding a command substitution that reads the token file when each command runs, so the env file holds a path and no secret. It prints nothing to stdout, and exits 0 without writing anything when the token file is not readable.
+
+**The shell profile case arm is optional: a convenience for the human's own terminal, never needed by a session.**
+Why: a terminal started outside Claude Code does not run the hook, so the human who runs the CLI there needs the token another way, and the arm gives it for that one folder only.
 
 One case arm per project, in the file your shell reads when it starts: `~/.zshrc` for zsh (the Mac default), `~/.bash_profile` for bash on a Mac, `~/.bashrc` for bash on Linux; check it with `zsh -n` or `bash -n` to match:
 
@@ -42,23 +47,35 @@ The arm names the folder the repo actually lives in; `$HOME/projects/<slug>` is 
 
 The profile runs once, when the shell starts, so a terminal opened in another folder and then moved into the project has no token: open a new terminal in the project's folder.
 
+**Apart from the hook and the optional arm, nothing sets `SUPABASE_ACCESS_TOKEN`; the human checks once after setup by searching for the variable's name in every shell startup file, the env entries in `~/.claude/settings.json`, every `.claude/settings*.json` hook in every repo on the machine, and any credential store the CLI or a hook reads from. A session cannot run that search, since its own deny matches the name, so the human does.**
+Why: a second source that exports a broader token wins or loses by load order, and nothing says which token a command ran with.
+
+**`supabase logout` removes only the local copy of a login; every `supabase login` creates an account-wide token that never expires, named `cli_` followed by user, host and time, which the CLI falls back to whenever the variable is missing. After a logout, revoke every `cli_` token in the dashboard, and never run `supabase login` once per-project tokens exist; the `Bash(supabase login*)` deny holds sessions to it.**
+Why: the fallback turns a token that failed to load into the account's full reach with no message, and a logout that leaves the dashboard token alive leaves that reach in place.
+
+**The token's expiry date lives in a second, non-secret file, `~/.config/<slug>/supabase-token-expires`: one line, `YYYY-MM-DD`, the date the dashboard shows. The hook exports it as `SUPABASE_TOKEN_EXPIRES`; the session-start check fails when it is missing, malformed or past, and warns within 14 days. The human maintains the date when the token is rotated.**
+Why: a token that expires fails as a 401 mid-task, and the date is the one fact about it a check can read without touching the secret.
+
 **Every CLI call is the plain command, `supabase ...`, never prefixed by `env`, an inline assignment, `npx`, `sh -c` or any wrapper.**
 Why: committed rules match the command text from its start, and a wrapper makes a different string of the same action; a session that needs a different credential has found a setup bug, not a reason to prefix.
 
 **The session-start check tests only that the variable is non-empty, and never prints, echoes, compares or logs its value.**
 Why: unset is the common silent failure (a 403 three steps later), and a check that reads the value is a check that can leak it.
 
-**Committed denies, listed in `CONFIG.settingsRules`: the token folder is unreadable and unwritable to file tools and to the Bash file commands and redirections those rules reach; the wrapped `supabase` form is denied; the variable's name is denied in any command text; the environment-dumping commands are denied.**
+**Committed denies, listed in `CONFIG.settingsRules`: the token folder is unreadable and unwritable to file tools and to the Bash file commands and redirections those rules reach; `supabase login` is denied; the wrapped `supabase` form is denied; the variable's name is denied in any command text; the environment-dumping commands are denied.**
 Why: a rule not committed is not in the next clone, and one not in the ratchet can be deleted unseen.
 
-**Known limits: the denies match command text and named paths, so they cannot catch a program invoked by path or inside `sh -c` or `bash -c`; a script or tool that reads its own environment; `$HOME` or a variable in place of the literal path; or a read-only command that reads files without naming them (`grep -r` from a parent folder). The limited permission on the token is the control that holds when a rule does not.**
+**When a session must confirm a documentation line that names the variable, or write a commit message that does, it puts the text in a file and uses `command grep -cxF -f <file>` or `git commit -F <file>`; that form is for those two purposes only and never reads, prints, sets or compares the value.**
+Why: the name-matching deny also stops the session's own prose, and a file keeps the name out of the command text without opening the one path that touches the value.
+
+**Known limits: the denies match command text and named paths, so they cannot catch a program invoked by path or inside `sh -c` or `bash -c`; a script or tool that reads its own environment; `$HOME` or a variable in place of the literal path; or a read-only command that reads files without naming them (`grep -r` from a parent folder). The hook is outside the denies, which is why it is pinned, and the env file holds a path, so reading it yields no secret. The limited permission on the token is the control that holds when a rule does not.**
 Why: a session that believes the denies are a boundary stops looking at what runs past them, and only the token's own scope limits what a leaked value can do.
 
 `permissions.blockReadsOutsideWorkingDirectories` is not the answer: with it on, a skill still loads through its `~/.claude/skills` symlink but cannot read its own files, which breaks any skill that reads its templates, project-bootstrap included.
 
-- Implemented in: `CLAUDE.md.tmpl`'s `supabase-cli` blocks (the Supabase section and Running in auto mode); `session-start.sh.tmpl`'s `supabase-cli` block; `SKILL.md` step 3's CLI row and step 5c's credential denies, listed in `CONFIG.settingsRules`; `GETTING-STARTED.md` section 7, "CLI token".
-- Invariant: the path pattern `~/.config/<slug>/supabase-token`, mode 600, the variable name `SUPABASE_ACCESS_TOKEN`, the plain-command rule, the check's shape (non-empty, never read), and the deny shapes.
-- Project-owned: the slug and the token.
+- Implemented in: `.claude/settings.json`'s SessionStart hook and its pin in `CONFIG.settingsRules.hooks`; `CLAUDE.md.tmpl`'s `supabase-cli` blocks (the Supabase section and Running in auto mode); `session-start.sh.tmpl`'s `supabase-cli` block (the variable and the expiry check); `SKILL.md` step 3's CLI row and step 5c's credential denies and hook, listed in `CONFIG.settingsRules` (the hook in its `hooks` list); `GETTING-STARTED.md` section 7, "CLI token".
+- Invariant: the path pattern `~/.config/<slug>/supabase-token`, mode 600, the variable name `SUPABASE_ACCESS_TOKEN`; the hook command's shape (guarded by `CLAUDE_ENV_FILE` and a readable token file, one `export` line holding a command substitution of the token file appended to `$CLAUDE_ENV_FILE`, a second for `SUPABASE_TOKEN_EXPIRES` from `~/.config/<slug>/supabase-token-expires`, `"$HOME"` never `~`, nothing on stdout); the plain-command rule; the check's shape (non-empty, never read; the expiry date failed when missing, malformed or past); and the deny shapes, `Bash(supabase login*)` among them.
+- Project-owned: the slug, the token, and the expiry date.
 
 ## 2. Permission rules
 
@@ -78,8 +95,11 @@ Why: each report can change what the next prompt should say, and a prompt that r
 
 Stop points are anything only the human can clear: a dashboard paste, a spend approval, grading, an on-device check, a push or deploy ask.
 
-- Implemented in: the instructions template's Drafting Claude Code Prompts section (model by role, one copy-paste block, one prompt at a time, scoped to two stop points, ask-rule prompts are not unattended).
-- Invariant: one block, the model by role, one prompt at a time, scoped to two stop points.
+**A verbatim string a session must write comes from a named file at a named commit and is confirmed with `command grep -cxF`; nothing load-bearing in a prompt rides on Markdown emphasis or a leading `#`, because a chat input can drop them.**
+Why: a string retyped from memory drifts by a character, and emphasis or a leading `#` is the first thing a paste loses, so the check has to run on the file's bytes.
+
+- Implemented in: the instructions template's Drafting Claude Code Prompts section (model by role, one copy-paste block, one prompt at a time, scoped to two stop points, ask-rule prompts are not unattended). The verbatim-string rule is stated above and in the same Drafting section (a named file, `command grep -cxF`).
+- Invariant: one block, the model by role, one prompt at a time, scoped to two stop points; a verbatim string from a named file at a named commit, confirmed with `command grep -cxF`, and nothing load-bearing on emphasis or a leading `#`.
 - Project-owned: the model mapping, and the project's own stop points.
 
 ## 4. Spend

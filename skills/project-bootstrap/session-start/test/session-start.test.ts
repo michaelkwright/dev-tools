@@ -11,6 +11,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 const TMPL = readFileSync(fileURLToPath(new URL("../../templates/session-start.sh.tmpl", import.meta.url)), "utf8");
 const BLOCKS = ["supabase-cli", "push-guard", "scheduled-ci"];
 const TOKEN = "stub-token-value-never-printed";
+// A local YYYY-MM-DD some days from the clock at test time (the script reads
+// `date +%Y-%m-%d`, local too). A literal day offset at every call site, never
+// a literal date, so no fixture expires.
+const dateDaysAhead = (days: number) => {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+const CLEAR = { SUPABASE_ACCESS_TOKEN: TOKEN, SUPABASE_TOKEN_EXPIRES: dateDaysAhead(60) };
 
 // Strip TEMPLATE NOTES (through the blank line after them), keep or strip each
 // block, delete kept blocks' marker lines, fill the placeholders.
@@ -20,7 +29,7 @@ const fill = (keep: string[], ciCmd = "echo scheduled-run-listed") => {
     s = keep.includes(b)
       ? s.replace(new RegExp(`^# (BEGIN|END):${b}\\n`, "gm"), "")
       : s.replace(new RegExp(`^# BEGIN:${b}\\n[^]*?^# END:${b}\\n`, "m"), "");
-  return s.replaceAll("{{DEV_TOOLS_SHA}}", "abc1234").replaceAll("{{SCHEDULED_CI_CMD}}", ciCmd);
+  return s.replaceAll("{{DEV_TOOLS_SHA}}", "abc1234").replaceAll("{{PROJECT_SLUG}}", "order-desk").replaceAll("{{SCHEDULED_CI_CMD}}", ciCmd);
 };
 
 let dir: string;
@@ -48,30 +57,76 @@ describe("session-start check", () => {
     expect(spawnSync("sh", ["-n", join(dir, "s.sh")]).status).toBe(0);
   });
 
-  it("passes with the token set and the guard on, and prints the scheduled runs", () => {
-    const r = run(fill(BLOCKS), { SUPABASE_ACCESS_TOKEN: TOKEN });
+  it("passes with the token and a clear expiry date set and the guard on, and prints the scheduled runs", () => {
+    const r = run(fill(BLOCKS), CLEAR);
     expect(r).toMatchObject({ status: 0, err: [] });
     expect(r.out).toContain("scheduled-run-listed");
   });
 
-  it("fails with one plain line naming the variable when the token is unset or empty", () => {
-    for (const env of [{}, { SUPABASE_ACCESS_TOKEN: "" }]) {
+  it("fails with one plain line naming the hook and the token file when the token is unset or empty", () => {
+    for (const env of [{ SUPABASE_TOKEN_EXPIRES: CLEAR.SUPABASE_TOKEN_EXPIRES }, { ...CLEAR, SUPABASE_ACCESS_TOKEN: "" }]) {
       const r = run(fill(BLOCKS), env);
       expect(r.status).toBe(1);
-      expect(r.err).toEqual([expect.stringMatching(/^session-start: SUPABASE_ACCESS_TOKEN is not set;/)]);
+      expect(r.err).toEqual([
+        expect.stringMatching(/^session-start: SUPABASE_ACCESS_TOKEN is not set: the SessionStart hook in \.claude\/settings\.json did not load it; check that ~\/\.config\/order-desk\/supabase-token exists and is readable/),
+      ]);
+    }
+  });
+
+  it("fails with one line saying the expires file is missing when the expiry variable is unset or empty", () => {
+    for (const env of [{ SUPABASE_ACCESS_TOKEN: TOKEN }, { ...CLEAR, SUPABASE_TOKEN_EXPIRES: "" }]) {
+      const r = run(fill(BLOCKS), env);
+      expect(r.status).toBe(1);
+      expect(r.err).toEqual([expect.stringMatching(/^session-start: SUPABASE_TOKEN_EXPIRES is not set: ~\/\.config\/order-desk\/supabase-token-expires is missing/)]);
+    }
+  });
+
+  it("fails when the expiry value is not YYYY-MM-DD, without printing the value", () => {
+    for (const value of ["next-month", "1-2-3", "20991231", " ", `${CLEAR.SUPABASE_TOKEN_EXPIRES}x`]) {
+      const r = run(fill(BLOCKS), { ...CLEAR, SUPABASE_TOKEN_EXPIRES: value });
+      expect(r.status).toBe(1);
+      expect(r.err).toEqual([expect.stringMatching(/^session-start: SUPABASE_TOKEN_EXPIRES is not a YYYY-MM-DD date; fix ~\/\.config\/order-desk\/supabase-token-expires/)]);
+      if (value.trim()) expect(r.err[0]).not.toContain(value);
+    }
+  });
+
+  it("fails when the expiry date is before today, without printing the date", () => {
+    for (const days of [-1, -30, -400]) {
+      const date = dateDaysAhead(days);
+      const r = run(fill(BLOCKS), { ...CLEAR, SUPABASE_TOKEN_EXPIRES: date });
+      expect(r.status).toBe(1);
+      expect(r.err).toEqual([expect.stringMatching(/^session-start: the Supabase token has expired \(per ~\/\.config\/order-desk\/supabase-token-expires\)/)]);
+      expect(r.err[0]).not.toContain(date);
+    }
+  });
+
+  it("warns on stderr without failing when the expiry date is within 14 days, today and the 14th day included", () => {
+    for (const days of [0, 1, 7, 14]) {
+      const date = dateDaysAhead(days);
+      const r = run(fill(BLOCKS), { ...CLEAR, SUPABASE_TOKEN_EXPIRES: date });
+      expect(r.status).toBe(0);
+      expect(r.err).toEqual([`session-start: warning: the Supabase token expires on ${date} (${days} days left); create a new token with the same scope before then and replace the token file and the expires file`]);
+      expect(r.out).toContain("scheduled-run-listed");
+    }
+  });
+
+  it("is silent when the expiry date is more than 14 days away", () => {
+    for (const days of [15, 30, 365, 1500]) {
+      const r = run(fill(BLOCKS), { ...CLEAR, SUPABASE_TOKEN_EXPIRES: dateDaysAhead(days) });
+      expect(r).toMatchObject({ status: 0, err: [] });
     }
   });
 
   it("fails when core.hooksPath does not name .githooks", () => {
     for (const hooksPath of [null, ".husky"]) {
-      const r = run(fill(BLOCKS), { SUPABASE_ACCESS_TOKEN: TOKEN }, hooksPath);
+      const r = run(fill(BLOCKS), CLEAR, hooksPath);
       expect(r.status).toBe(1);
       expect(r.err).toEqual([expect.stringMatching(/^session-start: git config core.hooksPath does not print \.githooks/)]);
     }
   });
 
   it("fails when the scheduled-CI command fails", () => {
-    const r = run(fill(BLOCKS, "false"), { SUPABASE_ACCESS_TOKEN: TOKEN });
+    const r = run(fill(BLOCKS, "false"), CLEAR);
     expect(r.status).toBe(1);
     expect(r.err).toEqual([expect.stringMatching(/^session-start: could not list the latest scheduled CI runs/)]);
   });
@@ -79,7 +134,7 @@ describe("session-start check", () => {
   it("reports every failure, each on its own line", () => {
     const r = run(fill(BLOCKS, "false"), {}, null);
     expect(r.status).toBe(1);
-    expect(r.err).toHaveLength(3);
+    expect(r.err).toHaveLength(4);
   });
 
   it("a stripped block checks nothing", () => {

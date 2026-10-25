@@ -160,15 +160,23 @@ describe.concurrent("doc-contract test: template tokens", () => {
   });
 });
 
-const RATCHET_ANCHOR = "deny: [] as string[],\n    ask: [] as string[],";
+const RATCHET_ANCHOR = "deny: [] as string[],\n    ask: [] as string[],\n    hooks: [] as SettingsHook[],";
 const DENY = "Bash(supabase db push:*)";
 const ASK = "mcp__supabase-order-desk-rw__execute_sql";
+const HOOK = { event: "SessionStart", command: '[ -r "$HOME/.config/order-desk/supabase-token" ] || exit 0; echo ok >> "$CLAUDE_ENV_FILE"' };
+const HOOKS = (command = HOOK.command) => ({ SessionStart: [{ hooks: [{ type: "command", command }] }] });
 
-function ratchet(root: string, settings: object | null) {
+function ratchet(root: string, settings: object | null, hooks: object[] = []) {
   const path = join(root, TEST_PATH);
   const src = readFileSync(path, "utf8");
   expect(src.split(RATCHET_ANCHOR).length - 1, "ratchet anchor in the reference test").toBe(1);
-  writeFileSync(path, src.replace(RATCHET_ANCHOR, `deny: ${JSON.stringify([DENY])} as string[],\n    ask: ${JSON.stringify([ASK])} as string[],`));
+  writeFileSync(
+    path,
+    src.replace(
+      RATCHET_ANCHOR,
+      `deny: ${JSON.stringify([DENY])} as string[],\n    ask: ${JSON.stringify([ASK])} as string[],\n    hooks: ${JSON.stringify(hooks)} as SettingsHook[],`,
+    ),
+  );
   if (settings) {
     mkdirSync(join(root, ".claude"), { recursive: true });
     writeFileSync(join(root, ".claude/settings.json"), JSON.stringify(settings, null, 2));
@@ -213,5 +221,31 @@ describe.concurrent("doc-contract test: settings ratchet", () => {
     const r = await run(root, "-t", "settings ratchet");
     expect(r.code, r.out).not.toBe(0);
     expect(r.out).toContain(".claude/settings.json not found");
+  });
+
+  it("a listed hook present under its event with its command unchanged passes", async () => {
+    const root = seed();
+    ratchet(root, { permissions: { deny: [DENY], ask: [ASK] }, hooks: HOOKS() }, [HOOK]);
+    const r = await run(root, "-t", "settings ratchet");
+    expect(r.out).toMatch(/every listed hook is still under its event with its command unchanged/);
+    expect(r.code, r.out).toBe(0);
+  });
+
+  it("a listed hook whose command changed fails, naming the event and the listed command", async () => {
+    const root = seed();
+    ratchet(root, { permissions: { deny: [DENY], ask: [ASK] }, hooks: HOOKS(`${HOOK.command}; cat "$CLAUDE_ENV_FILE"`) }, [HOOK]);
+    const r = await run(root, "-t", "settings ratchet");
+    expect(r.code, r.out).not.toBe(0);
+    expect(r.out).toContain(`SessionStart  ${HOOK.command}`);
+  });
+
+  it("a listed hook missing from its event fails, and one moved to another event too", async () => {
+    for (const hooks of [{}, { Stop: HOOKS().SessionStart }]) {
+      const root = seed();
+      ratchet(root, { permissions: { deny: [DENY], ask: [ASK] }, hooks }, [HOOK]);
+      const r = await run(root, "-t", "settings ratchet");
+      expect(r.code, r.out).not.toBe(0);
+      expect(r.out).toContain(`SessionStart  ${HOOK.command}`);
+    }
   });
 });

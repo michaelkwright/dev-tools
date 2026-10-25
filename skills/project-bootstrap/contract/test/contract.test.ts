@@ -25,16 +25,23 @@ const CONNECTOR_ASKS = ["mcp__supabase-<slug>-rw__execute_sql", "mcp__supabase-<
 const PUSH_ASKS = ["Bash(git push)", "Bash(git push *)"];
 const CREDENTIAL_DENIES = [
   "Read(~/.config/<slug>/**)", "Edit(~/.config/<slug>/**)",
-  "Bash(env *supabase*)", "Bash(npx supabase*)", "Bash(*SUPABASE_ACCESS_TOKEN*)",
+  "Bash(supabase login*)", "Bash(env *supabase*)", "Bash(npx supabase*)", "Bash(*SUPABASE_ACCESS_TOKEN*)",
   "Bash(printenv*)", "Bash(env)", "Bash(export)", "Bash(export -p*)", "Bash(declare -p*)", "Bash(set)",
 ];
-// The list as round 8 proved it, before the npx deny joined.
-const CREDENTIAL_DENIES_R8 = CREDENTIAL_DENIES.filter((r) => r !== "Bash(npx supabase*)");
+// The list as round 9 proved it, before the login deny joined, and as round 8
+// proved it, before the npx deny joined.
+const CREDENTIAL_DENIES_R9 = CREDENTIAL_DENIES.filter((r) => r !== "Bash(supabase login*)");
+const CREDENTIAL_DENIES_R8 = CREDENTIAL_DENIES_R9.filter((r) => r !== "Bash(npx supabase*)");
+// The SessionStart hook's exact command, as step 5c has the bootstrap write it
+// into the committed settings (one line of sh, no matcher). A bootstrapped
+// repo lists it in CONFIG.settingsRules.hooks, so a session cannot edit it to
+// print the env file unseen.
+const SESSION_START_HOOK = "[ -n \"$CLAUDE_ENV_FILE\" ] && [ -r \"$HOME/.config/<slug>/supabase-token\" ] || exit 0; echo 'export SUPABASE_ACCESS_TOKEN=\"$(cat \"$HOME/.config/<slug>/supabase-token\")\"' >> \"$CLAUDE_ENV_FILE\"; [ -r \"$HOME/.config/<slug>/supabase-token-expires\" ] && echo 'export SUPABASE_TOKEN_EXPIRES=\"$(cat \"$HOME/.config/<slug>/supabase-token-expires\")\"' >> \"$CLAUDE_ENV_FILE\"; exit 0";
 
 // Each permission-engine probe's last proof and the exact rule strings it
 // proved. When SKILL.md's strings stop matching these, the probe is due:
 // rerun it, then update its record here in the same commit.
-const PROBES = [
+const PROBES: { probe: string; lastProof: string; deny: string[]; ask: string[]; hook?: string; covered: string[] }[] = [
   {
     probe: "push denies and push guard",
     lastProof: "round 5, commit 'project-bootstrap: Supabase follow-up questions wait for the project; proof fixes'",
@@ -81,12 +88,30 @@ const PROBES = [
     // allowed; it is checked by the plain-command test below.
     probe: "credential denies with npx supabase (stub supabase and npx, real HOME, scratch settings)",
     lastProof: "round 9, commit 'dev-tools adopts its own push guard, rules and pre-flight check; bootstrap follow-ups (CLI-token row, npx deny, profile files, probe record)'",
-    deny: CREDENTIAL_DENIES,
+    deny: CREDENTIAL_DENIES_R9,
     ask: [] as string[],
     covered: [
       "npx supabase db push", "npx supabase functions deploy demo", "env supabase db push",
       "env -u SUPABASE_ACCESS_TOKEN supabase db push",
     ],
+  },
+  {
+    // One child, slug order-desk, a stub supabase first on PATH, the real HOME,
+    // rules and a SessionStart hook from a scratch settings file, the hook
+    // pointed at a scratch token folder holding a dummy token and an expires
+    // file. Proved: the hook ran in the -p child (hook_started and
+    // hook_response events, exit 0, empty stdout) and a filled session-start
+    // check passed on both variables; the forms below were refused; a cat of
+    // the scratch token file (a control path no rule names) was allowed. Fact,
+    // not a verdict: CLAUDE_ENV_FILE is unset in the child's Bash commands, so
+    // a session cannot find the env file by that name; the file holds the
+    // token's path, not its value, in any case.
+    probe: "credential denies with supabase login, and the SessionStart hook (stub supabase, real HOME, scratch settings)",
+    lastProof: "round 10, commit 'project-bootstrap: the SessionStart hook loads the CLI token; login deny, expiry check, hook pins'",
+    deny: CREDENTIAL_DENIES,
+    ask: [] as string[],
+    hook: SESSION_START_HOOK,
+    covered: ["supabase login", "supabase login --token x", "printenv", "echo $SUPABASE_ACCESS_TOKEN"],
   },
 ];
 
@@ -116,12 +141,18 @@ const COLD_PROOFS = [
 ];
 
 // Every ```json block in SKILL.md, parsed, with the paragraph that leads into it.
-type Block = { permissions: { deny?: string[]; ask?: string[]; allow?: string[] }; lead: string };
+type Hook = { type?: string; command?: string; matcher?: string };
+type Block = {
+  permissions?: { deny?: string[]; ask?: string[]; allow?: string[] };
+  hooks?: Record<string, { matcher?: string; hooks?: Hook[] }[]>;
+  lead: string;
+};
 function jsonBlocks(): Block[] {
   return [...skill().matchAll(/([^\n]*)\n\n```json\n([^]*?)\n```/g)].map((m) => ({ ...JSON.parse(m[2]), lead: m[1] }));
 }
 const blockWith = (kind: "deny" | "ask", rule: string) =>
-  jsonBlocks().filter((b) => b.permissions[kind]?.includes(rule));
+  jsonBlocks().filter((b) => b.permissions?.[kind]?.includes(rule));
+const hookBlocks = () => jsonBlocks().filter((b) => b.hooks);
 
 // A model of a Bash rule's wildcard: `*` matches any text, spaces included.
 // It checks the strings against the forms they are meant to cover; whether
@@ -157,7 +188,7 @@ describe("permission rules SKILL.md writes", () => {
     const [ask] = blockWith("ask", MIGRATION_ASK[0]);
     expect(deny.lead).toMatch(/^With the `migration-deny` block kept \(the project exists, and the user applies schema changes by hand\)/);
     expect(ask.lead).toMatch(/^With the `schema-by-claude` block kept \(the project exists, and the user lets Claude apply schema changes\)/);
-    for (const b of jsonBlocks()) expect(JSON.stringify(b.permissions.allow ?? [])).not.toContain("apply_migration");
+    for (const b of jsonBlocks()) expect(JSON.stringify(b.permissions?.allow ?? [])).not.toContain("apply_migration");
     expect(skill()).toContain("**With the project existing, write the writable connector's `apply_migration` as a deny on the dashboard path and as an ask on the Claude path; never leave it unruled, and never allow it.**");
     expect(skill()).toContain("yourself, or no answer: the `schema-by-hand` and `migration-deny` blocks and the step-5c `apply_migration` deny; Claude: the `schema-by-claude` block and the step-5c `apply_migration` ask");
   });
@@ -176,11 +207,14 @@ describe("permission rules SKILL.md writes", () => {
     expect(skill()).toContain('"Does pushing to your main branch publish or deploy your app?');
   });
 
-  it("every rule step 5c writes is listed in the settings ratchet", () => {
+  it("every rule step 5c writes is listed in the settings ratchet, and the hook in its hooks list", () => {
     expect(skill()).toMatch(/\*\*List every deny and ask rule this step writes, and only those, in the contract test's `CONFIG\.settingsRules`/);
+    expect(skill()).toContain("(doc-system's settings ratchet), and the SessionStart hook's command, when written, in its `hooks` list.**");
     const ref = readFileSync(fileURLToPath(new URL("../../../doc-system/reference/doc-contracts.test.ts", import.meta.url)), "utf8");
     expect(ref).toContain("settingsRules: {");
+    expect(ref).toContain("    hooks: [] as SettingsHook[],");
     expect(ref).toContain('describe("settings ratchet"');
+    expect(ref).toContain('it("every listed hook is still under its event with its command unchanged"');
   });
 
   it("the credential denies are exactly these strings, in one block, kept with supabase-cli", () => {
@@ -190,10 +224,52 @@ describe("permission rules SKILL.md writes", () => {
     expect(blocks[0].lead).toMatch(/^With the `supabase-cli` block kept/);
   });
 
-  it("plain CLI calls and the session-start check pass the credential denies", () => {
+  it("plain CLI calls, the session-start check and the expiry variable pass the credential denies", () => {
     const bash = CREDENTIAL_DENIES.filter((r) => r.startsWith("Bash("));
-    for (const cmd of ["supabase functions deploy demo", "supabase gen types typescript --linked", "sh scripts/session-start.sh", "set -e", "npx vitest run"])
+    for (const cmd of [
+      "supabase functions deploy demo", "supabase gen types typescript --linked", "supabase logout", "sh scripts/session-start.sh",
+      "set -e", "npx vitest run", 'echo "$SUPABASE_TOKEN_EXPIRES"', "cat \"$CLAUDE_ENV_FILE\"",
+    ])
       expect(matchesAny(bash, cmd), cmd).toBe(false);
+    // The expiry variable's name is not a substring of any deny, in either direction.
+    for (const rule of CREDENTIAL_DENIES) expect(rule).not.toContain("SUPABASE_TOKEN_EXPIRES");
+    expect("SUPABASE_TOKEN_EXPIRES").not.toContain("SUPABASE_ACCESS_TOKEN");
+  });
+
+  it("supabase login is denied in its bare and --token forms, with the denies kept in the same block", () => {
+    const bash = CREDENTIAL_DENIES.filter((r) => r.startsWith("Bash("));
+    for (const cmd of ["supabase login", "supabase login --token x", "supabase login --no-browser"]) expect(matchesAny(bash, cmd), cmd).toBe(true);
+    expect(CREDENTIAL_DENIES.indexOf("Bash(supabase login*)")).toBe(CREDENTIAL_DENIES.indexOf("Bash(env *supabase*)") - 1);
+    expect(skill()).toContain("the CLI has no subcommand that prints or manages its own token, so none is denied");
+  });
+
+  it("the SessionStart hook is exactly this command, in one hooks block kept with supabase-cli", () => {
+    const blocks = hookBlocks();
+    expect(blocks).toHaveLength(1);
+    const [block] = blocks;
+    expect(block.lead).toMatch(/^With the `supabase-cli` block kept, also merge in the SessionStart hook/);
+    expect(Object.keys(block.hooks ?? {})).toEqual(["SessionStart"]);
+    const groups = block.hooks?.SessionStart ?? [];
+    expect(groups).toHaveLength(1);
+    expect(groups[0].matcher).toBeUndefined();
+    expect(groups[0].hooks).toEqual([{ type: "command", command: SESSION_START_HOOK }]);
+  });
+
+  it("the hook names both files under $HOME, writes only to the env file, and prints nothing", () => {
+    const h = SESSION_START_HOOK;
+    expect(h).not.toMatch(/~|\/Users\/|\/home\//);
+    expect(h).toContain('[ -r "$HOME/.config/<slug>/supabase-token" ] || exit 0;');
+    expect(h).toContain('[ -r "$HOME/.config/<slug>/supabase-token-expires" ] &&');
+    expect(h).toContain(`echo 'export SUPABASE_ACCESS_TOKEN="$(cat "$HOME/.config/<slug>/supabase-token")"' >> "$CLAUDE_ENV_FILE"`);
+    expect(h).toContain(`echo 'export SUPABASE_TOKEN_EXPIRES="$(cat "$HOME/.config/<slug>/supabase-token-expires")"' >> "$CLAUDE_ENV_FILE"`);
+    // Every echo is redirected into the env file; a SessionStart hook's stdout becomes context.
+    expect(h.split("echo ").length - 1).toBe(h.split(`>> "$CLAUDE_ENV_FILE"`).length - 1);
+    expect(h.endsWith("; exit 0")).toBe(true);
+    expect(h).not.toContain("\n");
+    // Single quotes keep the substitution for Bash time, so the env file holds the path, never the value.
+    expect(h).toContain(`echo 'export`);
+    // The hook is not a Bash tool call, so this match is moot for it; it is what stops a session from running the same line.
+    expect(matchesAny(CREDENTIAL_DENIES.filter((r) => r.startsWith("Bash(")), h)).toBe(true);
   });
 
   it("plain pushes pass the denies", () => {
@@ -203,9 +279,10 @@ describe("permission rules SKILL.md writes", () => {
 });
 
 describe("probe records", () => {
-  it.each(PROBES)("$probe: SKILL.md's rule strings match the last proof's", ({ deny, ask }) => {
+  it.each(PROBES)("$probe: SKILL.md's rule strings match the last proof's", ({ deny, ask, hook }) => {
     for (const rule of deny) expect(blockWith("deny", rule), `deny ${rule}`).toHaveLength(1);
     for (const rule of ask) expect(blockWith("ask", rule), `ask ${rule}`).toHaveLength(1);
+    if (hook) expect(hookBlocks().filter((b) => b.hooks?.SessionStart?.[0]?.hooks?.[0]?.command === hook)).toHaveLength(1);
   });
 
   it.each(PROBES)("$probe: every covered Bash form matches a recorded rule", ({ deny, ask, covered }) => {
@@ -350,6 +427,21 @@ describe("the session-start check", () => {
     expect(tmpl()).toContain('if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then');
     expect(tmpl().split("SUPABASE_ACCESS_TOKEN:-")).toHaveLength(2);
     expect(tmpl()).not.toMatch(/\$SUPABASE_ACCESS_TOKEN|\$\{SUPABASE_ACCESS_TOKEN\}/);
+  });
+
+  it("names the hook when the token is unset, checks the expiry date with no date flags, and prints it only in the warning", () => {
+    const block = tmpl().split("# BEGIN:supabase-cli\n")[1].split("# END:supabase-cli\n")[0];
+    expect(block).toContain("the SessionStart hook in .claude/settings.json did not load it; check that ~/.config/{{PROJECT_SLUG}}/supabase-token exists and is readable, then start the session again");
+    expect(block).toContain("~/.config/{{PROJECT_SLUG}}/supabase-token-expires is missing");
+    expect(block).toContain("[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9])");
+    expect(block).toContain('elif [ "$days_left" -le 14 ]; then');
+    expect(block).not.toMatch(/date +-[vdr]|date +--date/);
+    expect(block.split("date +%Y-%m-%d")).toHaveLength(2);
+    // The expiry value is expanded in the warning line only; the fail lines never print it.
+    const prints = block.split("\n").filter((l) => /\$SUPABASE_TOKEN_EXPIRES|\$\{SUPABASE_TOKEN_EXPIRES\}/.test(l) && /\b(echo|fail) /.test(l));
+    expect(prints).toHaveLength(1);
+    expect(prints[0]).toContain("session-start: warning: the Supabase token expires on $SUPABASE_TOKEN_EXPIRES");
+    expect(tmpl()).toContain("#   PROJECT_SLUG      Project slug (supabase-cli), as in CLAUDE.md.");
   });
 
   it("SKILL.md writes it to every target, and CLAUDE.md runs it at pre-flight", () => {

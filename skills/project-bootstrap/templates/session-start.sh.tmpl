@@ -3,6 +3,7 @@
 # optional block, deletes the marker lines of kept blocks, then deletes these
 # notes down to and including the blank line after them.
 #   DEV_TOOLS_SHA     dev-tools commit this file was seeded from.
+#   PROJECT_SLUG      Project slug (supabase-cli), as in CLAUDE.md.
 #   SCHEDULED_CI_CMD  Latest scheduled CI runs (scheduled-ci), as in CLAUDE.md.
 # Optional blocks sit between "# BEGIN:<name>" and "# END:<name>" lines.
 #   supabase-cli  Keep only when CLAUDE.md keeps its supabase-cli block.
@@ -17,7 +18,8 @@
 # Run at session pre-flight, from the repo root: sh scripts/session-start.sh
 # Each failed check prints one line on stderr, and the exit status is non-zero
 # when any check failed. It tests a credential only for being set, and never
-# prints, compares or logs its value.
+# prints, compares or logs its value; the one value it may print is a token's
+# expiry date.
 
 status=0
 fail() {
@@ -27,7 +29,35 @@ fail() {
 
 # BEGIN:supabase-cli
 if [ -z "${SUPABASE_ACCESS_TOKEN:-}" ]; then
-  fail "SUPABASE_ACCESS_TOKEN is not set; open a new terminal in this project's folder so the shell profile loads it, then start the session again"
+  fail "SUPABASE_ACCESS_TOKEN is not set: the SessionStart hook in .claude/settings.json did not load it; check that ~/.config/{{PROJECT_SLUG}}/supabase-token exists and is readable, then start the session again"
+fi
+
+# Days since the Unix epoch for a YYYY-MM-DD date, in shell arithmetic alone (the
+# civil-calendar formula), so the expiry window needs no date flags, which
+# differ between macOS and Linux. Leading zeros are dropped before arithmetic.
+days_from_date() {
+  dfd_y=${1%%-*}; dfd_m=${1#*-}; dfd_m=${dfd_m%%-*}; dfd_d=${1##*-}
+  dfd_m=${dfd_m#0}; dfd_d=${dfd_d#0}
+  if [ "$dfd_m" -le 2 ]; then dfd_y=$((dfd_y - 1)); dfd_m=$((dfd_m + 9)); else dfd_m=$((dfd_m - 3)); fi
+  dfd_era=$((dfd_y / 400)); dfd_yoe=$((dfd_y - dfd_era * 400))
+  dfd_doy=$(((153 * dfd_m + 2) / 5 + dfd_d - 1))
+  dfd_doe=$((dfd_yoe * 365 + dfd_yoe / 4 - dfd_yoe / 100 + dfd_doy))
+  echo $((dfd_era * 146097 + dfd_doe - 719468))
+}
+
+if [ -z "${SUPABASE_TOKEN_EXPIRES:-}" ]; then
+  fail "SUPABASE_TOKEN_EXPIRES is not set: ~/.config/{{PROJECT_SLUG}}/supabase-token-expires is missing, so the token's expiry date is unknown; write that date there as YYYY-MM-DD, then start the session again"
+else
+  case "$SUPABASE_TOKEN_EXPIRES" in
+    [0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9])
+      days_left=$(( $(days_from_date "$SUPABASE_TOKEN_EXPIRES") - $(days_from_date "$(date +%Y-%m-%d)") ))
+      if [ "$days_left" -lt 0 ]; then
+        fail "the Supabase token has expired (per ~/.config/{{PROJECT_SLUG}}/supabase-token-expires); create a new token with the same scope, replace the token file and the expires file, then start the session again"
+      elif [ "$days_left" -le 14 ]; then
+        echo "session-start: warning: the Supabase token expires on $SUPABASE_TOKEN_EXPIRES ($days_left days left); create a new token with the same scope before then and replace the token file and the expires file" >&2
+      fi ;;
+    *) fail "SUPABASE_TOKEN_EXPIRES is not a YYYY-MM-DD date; fix ~/.config/{{PROJECT_SLUG}}/supabase-token-expires, then start the session again" ;;
+  esac
 fi
 # END:supabase-cli
 

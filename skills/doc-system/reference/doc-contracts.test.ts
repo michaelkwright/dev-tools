@@ -15,6 +15,7 @@ import { fileURLToPath } from "node:url";
 type HeadingException = { file: string; heading: string; reason: string };
 type PartitionException = { file: string; version: string; reason: string };
 type TokenAllowance = { file: string; token: string; reason: string };
+type SettingsHook = { event: string; command: string };
 
 export const CONFIG = {
   // Repo root, relative to this file. The default assumes src/test/.
@@ -83,14 +84,16 @@ export const CONFIG = {
   },
 
   // The settings ratchet: every permission rule listed here must stay in the
-  // committed settings file, a listed ask rule in its ask or deny list. Empty
-  // lists check nothing; a setup that writes rules lists each one. Remove an
-  // entry only in the commit that removes its rule on purpose. Run it alone
-  // with -t "settings ratchet".
+  // committed settings file, a listed ask rule in its ask or deny list, and
+  // every hook listed here must stay under its event with its command
+  // unchanged. Empty lists check nothing; a setup that writes rules or hooks
+  // lists each one. Remove an entry only in the commit that removes its rule
+  // or hook on purpose. Run it alone with -t "settings ratchet".
   settingsRules: {
     file: ".claude/settings.json",
     deny: [] as string[],
     ask: [] as string[],
+    hooks: [] as SettingsHook[],
   },
 };
 
@@ -719,21 +722,25 @@ describe("template tokens", () => {
 // ─── settings ratchet ───────────────────────────────────────────────────────
 //
 // In auto mode an edit under .claude/ is judged by a classifier, not shown to
-// the user, so a deleted rule would go unnoticed until the action it gated ran.
+// the user, so a deleted rule would go unnoticed until the action it gated ran,
+// and an edited hook could run anything unseen.
 
 const S = CONFIG.settingsRules;
+type Settings = { permissions?: Record<string, unknown>; hooks?: Record<string, { hooks?: { type?: string; command?: string }[] }[]> };
+function settings(listed: number): Settings {
+  expect(existsSync(abs(S.file)), `${S.file} not found; CONFIG.settingsRules lists ${listed} entr(ies) for it.`).toBe(true);
+  try {
+    return JSON.parse(read(S.file)) as Settings;
+  } catch (e) {
+    expect.fail(`${S.file} does not parse as JSON: ${(e as Error).message}`);
+  }
+}
 
 describe("settings ratchet", () => {
   it("every listed deny and ask rule is still in the committed settings file", () => {
     const listed = S.deny.length + S.ask.length;
     if (listed === 0) return;
-    expect(existsSync(abs(S.file)), `${S.file} not found; CONFIG.settingsRules lists ${listed} rule(s) for it.`).toBe(true);
-    let perms: Record<string, unknown> = {};
-    try {
-      perms = (JSON.parse(read(S.file)) as { permissions?: Record<string, unknown> }).permissions ?? {};
-    } catch (e) {
-      expect.fail(`${S.file} does not parse as JSON: ${(e as Error).message}`);
-    }
+    const perms = settings(listed).permissions ?? {};
     const list = (kind: string) => (Array.isArray(perms[kind]) ? (perms[kind] as unknown[]) : []);
     const missing = [
       ...S.deny.filter((r) => !list("deny").includes(r)).map((r) => `  deny  ${r}`),
@@ -744,6 +751,20 @@ describe("settings ratchet", () => {
       `${missing.length} permission rule(s) listed in CONFIG.settingsRules are missing from ` +
         `${S.file}:\n${missing.join("\n")}\n\nPut each rule back. If one was removed on purpose, ` +
         `remove its CONFIG entry in the same commit, with the reason in the commit message.`,
+    ).toEqual([]);
+  });
+
+  it("every listed hook is still under its event with its command unchanged", () => {
+    if (S.hooks.length === 0) return;
+    const hooks = settings(S.hooks.length).hooks ?? {};
+    const commands = (event: string) =>
+      (Array.isArray(hooks[event]) ? hooks[event] : []).flatMap((g) => g.hooks ?? []).filter((h) => h.type === "command").map((h) => h.command);
+    const missing = S.hooks.filter((h) => !commands(h.event).includes(h.command)).map((h) => `  ${h.event}  ${h.command}`);
+    expect(
+      missing,
+      `${missing.length} hook(s) listed in CONFIG.settingsRules are missing from ${S.file}, or their command ` +
+        `changed:\n${missing.join("\n")}\n\nPut each hook back as listed. If one was changed or removed on ` +
+        `purpose, change its CONFIG entry in the same commit, with the reason in the commit message.`,
     ).toEqual([]);
   });
 });

@@ -1,0 +1,174 @@
+// Seeded from dev-tools @ {{DEV_TOOLS_SHA}}; this file is now the project's own,
+// and a later port of dev-tools changes updates that commit to the one ported
+// from.
+//
+// npm run functions:deploy -- <slug> <commit> — the one route for deploying an
+// Edge Function, run by the human in their own terminal (never by a session:
+// CLAUDE.md and .claude/settings.json deny it). It deploys the function's
+// directory at the checked-out HEAD with the pinned Supabase CLI, then runs the
+// byte-for-byte read-back (scripts/functions-readback.mjs) with the same token,
+// and exits with the read-back's code. Any refusal exits 2.
+//
+// The project comes from SUPABASE_PROJECT_REF in this terminal's environment
+// and is printed before the token is asked for. The token is never read from
+// this script's environment: it is asked for on the terminal with the input
+// hidden, held in memory, and handed to each child in that child's environment
+// alone. It is never printed, logged or written, and every echoed line is
+// masked.
+import { closeSync, existsSync, mkdtempSync, openSync, readFileSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { pathToFileURL } from "node:url";
+
+/** The one CLI version deploys and read-backs run with; a project bumps it here and nowhere else. */
+export const SUPABASE_CLI_VERSION = "2.120.0";
+
+/** The deploy command's flags beyond the slug and project ref: the CLI bundles server-side, so no Docker is needed. */
+export const DEPLOY_FLAGS = Object.freeze(["--use-api"]);
+
+export const TOKEN_ENV = "SUPABASE_ACCESS_TOKEN";
+
+/** Masks token-shaped text: Supabase secret, publishable and access tokens, and JWTs. */
+export const maskSecrets = (/** @type {string} */ text) =>
+  text
+    .replace(/sb_(secret|publishable)_[A-Za-z0-9_-]+/g, "[masked]")
+    .replace(/sb[p]_[A-Za-z0-9]+/g, "[masked]")
+    .replace(/eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]*/g, "[masked]");
+
+class Refusal extends Error {}
+
+/** Masks token-shaped text and the token itself. */
+const masker = (/** @type {string} */ token) => (/** @type {string} */ text) => {
+  const masked = maskSecrets(text);
+  return token === "" ? masked : masked.split(token).join("[masked]");
+};
+
+/**
+ * @typedef {{
+ *   out: (line: string) => void,
+ *   env: NodeJS.ProcessEnv,
+ *   stdinIsTTY: boolean,
+ *   stdoutIsTTY: boolean,
+ *   git: (args: string[]) => string,
+ *   isFile: (path: string) => boolean,
+ *   askToken: () => Promise<string>,
+ *   makeLogDir: () => string,
+ *   run: (cmd: string, args: string[], opts: { env: NodeJS.ProcessEnv, logPath: string }) => { status: number | null, error?: Error },
+ *   readLog: (path: string) => string,
+ * }} Io
+ */
+
+/**
+ * @param {string[]} argv
+ * @param {Io} io
+ * @returns {Promise<number>} 2 a refusal; else the CLI's code on a failed deploy, else the read-back's code
+ */
+export async function main(argv, io) {
+  const { out } = io;
+  let mask = maskSecrets;
+  try {
+    if (argv.length !== 2 || argv.some((a) => a === "" || a.startsWith("-"))) {
+      throw new Refusal("usage: npm run functions:deploy -- <slug> <commit>");
+    }
+    const [slug, commit] = argv;
+    if (!/^[a-z0-9][a-z0-9-]*$/.test(slug) || !io.isFile(`supabase/functions/${slug}/index.ts`)) {
+      throw new Refusal(`not a function: ${slug} (no supabase/functions/${slug}/index.ts)`);
+    }
+    const head = io.git(["rev-parse", "HEAD"]).trim();
+    if (!/^[0-9a-f]{7,40}$/.test(commit) || !head.startsWith(commit)) {
+      throw new Refusal(`${commit} is not HEAD (${head.slice(0, 7)}); check out the commit to deploy`);
+    }
+    if (io.git(["status", "--porcelain"]).trim() !== "") throw new Refusal("the working tree is not clean; commit or remove every change first");
+    const ref = io.env.SUPABASE_PROJECT_REF ?? "";
+    if (!/^[a-z]{20}$/.test(ref)) throw new Refusal("SUPABASE_PROJECT_REF is unset or does not look like a project ref");
+    if (!io.stdinIsTTY || !io.stdoutIsTTY) throw new Refusal("stdin and stdout must both be a terminal: run this in your own terminal");
+
+    out(`Deploying ${slug} at ${head.slice(0, 7)} to project ${ref} with Supabase CLI ${SUPABASE_CLI_VERSION}.`);
+    out("Make an access token for this project with Edge Functions read and write,");
+    out("the shortest expiry the dashboard offers, and revoke it right after this run.");
+    const token = (await io.askToken()).trim();
+    if (token === "") throw new Refusal("no token given");
+    mask = masker(token);
+
+    // The parent's own token is never passed on: each child gets the one typed here.
+    const { [TOKEN_ENV]: _ignored, ...rest } = io.env;
+    const childEnv = { ...rest, [TOKEN_ENV]: token };
+    const logDir = io.makeLogDir();
+
+    const deployLog = join(logDir, "deploy.log");
+    const deploy = io.run("npx", ["--yes", `supabase@${SUPABASE_CLI_VERSION}`, "functions", "deploy", slug, "--project-ref", ref, ...DEPLOY_FLAGS], {
+      env: childEnv,
+      logPath: deployLog,
+    });
+    const code = deploy.error ? 1 : (deploy.status ?? 1);
+    out(`deploy log: ${deployLog}`);
+    for (const line of mask(io.readLog(deployLog)).split("\n")) if (line.trim() !== "") out(`  ${line}`);
+    out(`deploy exit code: ${code}${deploy.error ? ` (${mask(deploy.error.message)})` : ""}`);
+    if (code !== 0) return code;
+
+    const readbackLog = join(logDir, "readback.log");
+    const readback = io.run("node", ["scripts/functions-readback.mjs", slug, head], { env: childEnv, logPath: readbackLog });
+    const rcode = readback.error ? 1 : (readback.status ?? 1);
+    out(`readback log: ${readbackLog}`);
+    for (const line of mask(io.readLog(readbackLog)).split("\n")) if (line.trim() !== "") out(`  ${line}`);
+    out(`readback exit code: ${rcode}`);
+    return rcode;
+  } catch (e) {
+    if (e instanceof Refusal) {
+      out(`functions:deploy refused: ${mask(e.message)}`);
+      return 2;
+    }
+    out(`functions:deploy failed: ${e instanceof Error ? mask(e.message) : "error"}`);
+    return 2;
+  }
+}
+
+/** Reads one line from the terminal with nothing echoed. */
+function askHidden(/** @type {NodeJS.ReadStream} */ stdin, /** @type {NodeJS.WriteStream} */ stdout) {
+  return new Promise((resolve) => {
+    stdout.write("Access token (input hidden): ");
+    stdin.setRawMode(true);
+    stdin.resume();
+    stdin.setEncoding("utf8");
+    let buf = "";
+    const done = (/** @type {string} */ value) => {
+      stdin.off("data", onData);
+      stdin.setRawMode(false);
+      stdin.pause();
+      stdout.write("\n");
+      resolve(value);
+    };
+    const onData = (/** @type {string} */ chunk) => {
+      for (const c of chunk) {
+        if (c === "\r" || c === "\n" || c === "\u0004") return done(buf);
+        if (c === "\u0003") return done("");
+        if (c === "\u007f" || c === "\b") buf = buf.slice(0, -1);
+        else buf += c;
+      }
+    };
+    stdin.on("data", onData);
+  });
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  process.exitCode = await main(process.argv.slice(2), {
+    out: (line) => console.log(line),
+    env: process.env,
+    stdinIsTTY: process.stdin.isTTY === true,
+    stdoutIsTTY: process.stdout.isTTY === true,
+    git: (args) => execFileSync("git", args, { encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] }),
+    isFile: (path) => existsSync(path),
+    askToken: () => askHidden(process.stdin, process.stdout),
+    makeLogDir: () => mkdtempSync(join(tmpdir(), "functions-deploy-")),
+    run: (cmd, args, { env, logPath }) => {
+      const fd = openSync(logPath, "w");
+      try {
+        return spawnSync(cmd, args, { env, stdio: ["ignore", fd, fd] });
+      } finally {
+        closeSync(fd);
+      }
+    },
+    readLog: (path) => readFileSync(path, "utf8"),
+  });
+}

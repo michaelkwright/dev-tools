@@ -32,6 +32,7 @@ Optional blocks are wrapped in HTML-comment markers BEGIN:<name> and END:<name>.
   repo-search   Keep only when repo-clone is stripped.
   schema-by-hand    Inside database and supabase. Keep unless the user chose to let Claude apply schema changes.
   schema-by-claude  Inside database and supabase. Keep only when the user chose to let Claude apply schema changes.
+  functions-deploy  Inside supabase. Keep only when CLAUDE.md keeps its functions-deploy block.
 -->
 # {{PROJECT_NAME}}: Claude.ai Planning Instructions
 
@@ -186,7 +187,7 @@ Why: a read that cannot write cannot damage production, and a query run by hand 
 Why: other projects' connectors appear in every chat and every Claude Code session on the account, and another project's answers from its own database.
 
 **`{{SUPABASE_RW_CONNECTOR}}` (writable) lives only in Claude Code, added at local scope; if it, or any writable Supabase connector, appears in a planning chat, or a task seems to need one, stop and say so.**
-Why: it is reserved for Claude Code sessions doing rolled-back behavioral probes and deploys; at local scope it reaches only sessions in this project's folder, where a committed `.mcp.json` would hand it to every session that opens the repo, and a writable connector in Claude.ai would load in every chat and every Claude Code session on the account.
+Why: it is reserved for Claude Code sessions doing rolled-back behavioral probes alone; at local scope it reaches only sessions in this project's folder, where a committed `.mcp.json` would hand it to every session that opens the repo, and a writable connector in Claude.ai would load in every chat and every Claude Code session on the account.
 
 **The read-only connector bypasses RLS, so its counts are fleet-wide; scope to `{{OWNER_USER_ID}}` when a per-user figure matters.**
 Why: an unscoped count covers every user's orders while reading like one user's.
@@ -195,13 +196,18 @@ Why: an unscoped count covers every user's orders while reading like one user's.
 Why: planning never needs those groups enough to justify write access.
 
 <!-- BEGIN:schema-by-hand -->
-**Schema changes are applied in the dashboard SQL editor, never by CLI push, and a function's deploy command goes in the same prompt that edits it.**
-Why: the CLI's migration history conflicts with hand-applied changes, and Edge Functions do not deploy on git push.
+**Schema changes are applied in the dashboard SQL editor, never by CLI push, and a prompt that changes a function ends at the human's deploy, says so, and is never unattended.**
+Why: the CLI's migration history conflicts with hand-applied changes, and Edge Functions do not deploy on git push and no session can deploy one.
 <!-- END:schema-by-hand -->
 <!-- BEGIN:schema-by-claude -->
-**Schema changes are applied by Claude Code with `{{SUPABASE_RW_CONNECTOR}}`'s `apply_migration`, never by CLI push, and a function's deploy command goes in the same prompt that edits it.**
-Why: the CLI's migration history conflicts with changes applied any other way, and Edge Functions do not deploy on git push.
+**Schema changes are applied by Claude Code with `{{SUPABASE_RW_CONNECTOR}}`'s `apply_migration`, never by CLI push, and a prompt that changes a function ends at the human's deploy, says so, and is never unattended.**
+Why: the CLI's migration history conflicts with changes applied any other way, and Edge Functions do not deploy on git push and no session can deploy one.
 <!-- END:schema-by-claude -->
+<!-- BEGIN:functions-deploy -->
+
+**The human's deploy is `npm run functions:deploy -- <slug> <commit>`, run in their own terminal after the commit, with `SUPABASE_PROJECT_REF` set there and a one-run token they create and revoke; the session verifies and pushes only after the human reports the script's exit code.**
+Why: the script reads the deployed bytes back against the commit, so its exit code is the evidence the session's own checks then build on.
+<!-- END:functions-deploy -->
 <!-- END:supabase -->
 
 ---

@@ -33,6 +33,7 @@ Optional blocks are wrapped in HTML-comment markers BEGIN:<name> and END:<name>.
   migration-deny    Inside supabase. Keep only when the project exists and schema-by-hand is kept, i.e. when the apply_migration deny is written.
   connectors        Inside supabase. Keep only when both connectors exist, each scoped to this project, and their names are real answers.
   supabase-cli      Inside supabase, plus one fact inside Running in auto mode's supabase block. Keep only when the user said Claude Code will run the Supabase CLI and its token is set up; the session-start script's block of the same name goes with it.
+  functions-deploy  Inside supabase, plus one fact inside Running in auto mode's supabase block. Keep only when the supabase-cli block is kept and the user said the app will have Edge Functions; the session-start script's and the instructions' blocks of the same name go with it.
   push-deploys  Under Running in auto mode. Keep only when the user said pushing to the main branch publishes or deploys the app.
   push-safe     Under Running in auto mode. Keep only when the user said it does not; strip both push blocks on an unsure answer.
   schema-by-hand and schema-by-claude also have one fact each under Running in auto mode, inside that section's supabase block.
@@ -257,22 +258,32 @@ Why: the CLI keeps its own migration history, which conflicts with changes appli
 Why: Claude.ai's tool toggles never reach Claude Code, and Claude.ai connectors appear here under ID prefixes, so a rule keyed to one silently stops matching when it is re-added, and a deny that stops matching fails open.
 <!-- END:migration-deny -->
 
-**Edge Functions do not deploy on git push: deploy in the same session as the edit, before the commit, and verify the deployment identifier (entrypoint) and update time advanced.**
+**Edge Functions do not deploy on git push: a pushed change to a function is not live until it has been deployed and its deployment identifier (entrypoint) and update time have advanced.**
 Why: otherwise the repo and the live function silently disagree, and the version counter alone can move without a deploy.
+<!-- BEGIN:functions-deploy -->
 
-```bash
-supabase functions deploy <name> --project-ref {{SUPABASE_PROJECT_REF}} > deploy.log 2>&1
-```
+**A session never deploys an Edge Function. A function change goes in this order: local gates green; commit; the session stops and asks the human to run `npm run functions:deploy -- <slug> <commit>` in their own terminal, where `SUPABASE_PROJECT_REF` must be set (this project's shell-profile case arm exports it) and the script asks for a one-run token at a hidden prompt; then the session checks through the read-only connector the entrypoint, `verify_jwt` and an update time after the deploy started, and smoke-tests the function; then push; then read CI.**
+Why: the script takes only a clean HEAD and a real terminal and reads the deployed bytes back against the commit, and pushing last means main never holds function code that is not live.
+
+**A prompt with a deploy is never unattended.**
+Why: the deploy needs the human's own terminal and a token only they create, so a run with no one there stops at that step.
+
+**`.claude/settings.json` denies `npm run functions:deploy`, `node scripts/functions-deploy.mjs`, `supabase functions deploy`, `delete` and `download` and the writable connector's `deploy_edge_function`, and asks on `supabase secrets`. To re-check a deployed function, run `npm run functions:readback -- <slug> <commit>`, which runs on the session's read-only token.**
+Why: a rule keeps the usual spellings out of a session's hands, and the read-back needs only read scopes, so the check stays open while the write does not.
+
+**A session's `SUPABASE_PROJECT_REF` comes from the `env` key in the untracked `.claude/settings.local.json`; a session never sets it inline.**
+Why: that file keeps the ref out of the repo on a public target, and an inline assignment is a different string of the same command, the form the credential rule forbids.
+<!-- END:functions-deploy -->
 <!-- BEGIN:supabase-cli -->
 
-**The Supabase CLI's credential is the `SUPABASE_ACCESS_TOKEN` the committed SessionStart hook in `.claude/settings.json` loads at session start, for this project only, from `~/.config/{{PROJECT_SLUG}}/`, which sessions never read or write; run CLI commands plain (`supabase ...`), never through `env`, an inline assignment or a wrapper, never run `supabase login`, and run the session-start check (`sh scripts/session-start.sh`) at pre-flight. To confirm a documentation line that names the variable, or to write a commit message that does, put the text in a file and use `command grep -cxF -f <file>` or `git commit -F <file>`, for those two purposes only.**
+**The Supabase CLI's credential is the `SUPABASE_ACCESS_TOKEN` the committed SessionStart hook in `.claude/settings.json` loads at session start, for this project only and with read scopes only, from `~/.config/{{PROJECT_SLUG}}/`, which sessions never read or write; run CLI commands plain (`supabase ...`), never through `env`, an inline assignment or a wrapper, never run `supabase login`, and run the session-start check (`sh scripts/session-start.sh`) at pre-flight. To confirm a documentation line that names the variable, or to write a commit message that does, put the text in a file and use `command grep -cxF -f <file>` or `git commit -F <file>`, for those two purposes only.**
 Why: committed rules match the command text from its start, so a wrapped form is a different string of the same action, a login stores an account-wide token the CLI falls back to, and a session that needs a different credential has found a setup bug, not a reason to prefix.
 <!-- END:supabase-cli -->
 
 **Run `REVOKE ALL ... FROM PUBLIC, anon, authenticated` before any targeted GRANT on a new function or table, and again after every DROP + CREATE; verify with the raw ACL.**
 Why: default privileges grant EXECUTE and table access to those roles at creation, and DROP + CREATE silently resets an ACL that CREATE OR REPLACE would have kept.
 
-**Use the read-only MCP connector for verification; reserve the writable connector for rolled-back probes and deploys.**
+**Use the read-only MCP connector for verification; reserve the writable connector for rolled-back probes alone.**
 Why: a read that cannot write cannot damage production, and the writable connector's extra reach is needed only where a transaction must run.
 
 **The writable connector is scoped to this project (its URL carries `project_ref=`) and added in Claude Code at local scope (`claude mcp add --transport http <name> --scope local <url>`); never use an account-wide writable connector, and never commit an MCP config (`.mcp.json` or any other) naming a Supabase server.**
@@ -317,6 +328,9 @@ Facts:
 <!-- BEGIN:supabase-cli -->
 - The Supabase CLI's credential, `SUPABASE_ACCESS_TOKEN`, is already in the environment; a session never prints, sets, unsets or overrides it, and a session never runs `supabase login`.
 <!-- END:supabase-cli -->
+<!-- BEGIN:functions-deploy -->
+- No session deploys an Edge Function: the human runs each deploy in their own terminal, so a prompt with a deploy is never unattended.
+<!-- END:functions-deploy -->
 <!-- END:supabase -->
 - Throwaway targets are only the session's scratch directory and whatever the prompt names as throwaway; everything else is real.
 

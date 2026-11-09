@@ -4,7 +4,7 @@
 // document's pinned rules and the session-start template's shape. Agent proofs
 // cover only judgment calls and Claude Code's permission engine (CLAUDE.md,
 // Proofs); everything a script can decide is decided here.
-import { existsSync, readFileSync, statSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
@@ -21,7 +21,13 @@ const PUSH_DENIES = [
 const DB_PUSH_DENIES = ["Bash(supabase db push:*)", "Bash(npx supabase db push:*)"];
 const MIGRATION_DENY = ["mcp__supabase-<slug>-rw__apply_migration"];
 const MIGRATION_ASK = ["mcp__supabase-<slug>-rw__apply_migration"];
-const CONNECTOR_ASKS = ["mcp__supabase-<slug>-rw__execute_sql", "mcp__supabase-<slug>-rw__deploy_edge_function"];
+const CONNECTOR_ASKS = ["mcp__supabase-<slug>-rw__execute_sql"];
+const CONNECTOR_DENY = ["mcp__supabase-<slug>-rw__deploy_edge_function"];
+const FUNCTIONS_DENIES = [
+  "Bash(npm run functions:deploy*)", "Bash(node scripts/functions-deploy.mjs*)",
+  "Bash(supabase functions deploy*)", "Bash(supabase functions delete*)", "Bash(supabase functions download*)",
+];
+const FUNCTIONS_ASKS = ["Bash(supabase secrets*)"];
 const PUSH_ASKS = ["Bash(git push)", "Bash(git push *)"];
 const CREDENTIAL_DENIES = [
   "Read(~/.config/<slug>/**)", "Edit(~/.config/<slug>/**)",
@@ -63,6 +69,7 @@ const PROBES: { probe: string; lastProof: string; deny: string[]; ask: string[];
     // Two stub servers in one child: one keyed as on the dashboard path
     // (apply_migration denied), one as on the Claude path (apply_migration
     // asked), each also allowed server-wide so an ask is seen to beat an allow.
+    // deploy_edge_function was an ask here; it is a deny now, in the round 11 record.
     probe: "writable-connector asks, apply_migration deny and ask, and push asks (stub servers)",
     lastProof: "round 6, commit 'project-bootstrap: existing-files commit, apply_migration ask, auto-mode start'",
     deny: MIGRATION_DENY,
@@ -113,6 +120,28 @@ const PROBES: { probe: string; lastProof: string; deny: string[]; ask: string[];
     hook: SESSION_START_HOOK,
     covered: ["supabase login", "supabase login --token x", "printenv", "echo $SUPABASE_ACCESS_TOKEN"],
   },
+  {
+    // One child, slug order-desk, stub supabase and npx first on PATH, a stub
+    // MCP server named for that slug, the real HOME, the filled rules in a
+    // scratch settings file, and Bash and the server allowed outright so a deny
+    // or an ask is seen to beat an allow. Every form below was refused, the
+    // last as an ask, which a headless run cannot answer. The controls
+    // `npm run functions:readback -- demo abc1234` and `supabase functions list`
+    // ran; they are checked by the controls test below. deploy_edge_function's
+    // deny withheld it from the child's tool list while its sibling tool on the
+    // same stub server was listed and ran. Also observed, and named in Known
+    // limits: `npx --yes supabase@0.0.1 functions deploy demo` ran, since a flag
+    // ahead of the package is outside `Bash(npx supabase*)`.
+    probe: "functions-deploy rules and the connector's deploy deny (stub supabase, npx and MCP server, real HOME, scratch settings)",
+    lastProof: "round 11, commit 'project-bootstrap: Edge Function deploys are the human's, with a one-run token; a session's token is read-only'",
+    deny: [...FUNCTIONS_DENIES, ...CONNECTOR_DENY],
+    ask: FUNCTIONS_ASKS,
+    covered: [
+      "npm run functions:deploy -- demo abc1234", "node scripts/functions-deploy.mjs demo abc1234",
+      "supabase functions deploy demo", "supabase functions delete demo", "supabase functions download demo",
+      "supabase secrets list",
+    ],
+  },
 ];
 
 // Each cold case's last proof and the strings it exercised, in SKILL.md and
@@ -136,6 +165,26 @@ const COLD_PROOFS = [
       "- `git clone --depth 1 --filter=blob:none --sparse https://github.com/{{GITHUB_REPO}} <dir>`",
       "<!-- BEGIN:repo-clone -->",
       "<!-- BEGIN:repo-search -->",
+    ],
+  },
+  {
+    case: "a scratch target with a stubbed Supabase project, the CLI token and Edge Functions both yes",
+    lastProof: "round 11, commit 'project-bootstrap: Edge Function deploys are the human's, with a one-run token; a session's token is read-only'",
+    covered: [
+      "functions-deploy blocks kept, the scripts and package.json scripts written, the step-5c rules in the settings copy and in CONFIG.settingsRules",
+      "the report names the deploy command and the ref's case arm with the slug and the real folder",
+      "the report's CLI-credential handover names both files outright",
+      "the ref's env key in the settings.local.json scratch copy, and the plain read-back line in CLAUDE.md",
+    ],
+    skill: [
+      '| "Will the app have Edge Functions? (Server code that Supabase runs for the app.)',
+      "- Edge Function deploys, with the `functions-deploy` block kept: the scripts written; the command, `npm run functions:deploy -- <slug> <commit>`",
+      "When the answer was yes, the report names the hook written and the two files it expects. Either way, both files are written out as full paths with `<slug>` filled in the report itself",
+      "With the `functions-deploy` block kept and a real ref (one the user answered or confirmed, never `$SUPABASE_PROJECT_REF`), merge this into `.claude/settings.local.json`, with `<ref>` filled, never replacing what is already there:",
+    ],
+    template: [
+      "<!-- BEGIN:functions-deploy -->",
+      "**The human's deploy is `npm run functions:deploy -- <slug> <commit>`,",
     ],
   },
 ];
@@ -193,8 +242,44 @@ describe("permission rules SKILL.md writes", () => {
     expect(skill()).toContain("yourself, or no answer: the `schema-by-hand` and `migration-deny` blocks and the step-5c `apply_migration` deny; Claude: the `schema-by-claude` block and the step-5c `apply_migration` ask");
   });
 
-  it("the writable connector's execute_sql and deploy_edge_function are ask rules keyed the same way", () => {
+  it("the writable connector's execute_sql is an ask rule keyed the same way", () => {
     expect(blockWith("ask", CONNECTOR_ASKS[0])[0]?.permissions.ask).toEqual(CONNECTOR_ASKS);
+  });
+
+  it("the writable connector's deploy_edge_function is a deny whenever the project exists, and no longer an ask", () => {
+    const blocks = blockWith("deny", CONNECTOR_DENY[0]);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].permissions.deny).toEqual(CONNECTOR_DENY);
+    expect(blocks[0].lead).toMatch(/^With the project existing, whichever schema answer was given and with or without the `functions-deploy` block/);
+    expect(blockWith("ask", CONNECTOR_DENY[0])).toHaveLength(0);
+    expect(skill()).toContain("**Deny the writable connector's `deploy_edge_function` whenever the project exists.**");
+  });
+
+  it("the functions-deploy denies and ask are exactly these strings, in one block kept with functions-deploy", () => {
+    const blocks = blockWith("deny", FUNCTIONS_DENIES[0]);
+    expect(blocks).toHaveLength(1);
+    expect(blocks[0].permissions.deny).toEqual(FUNCTIONS_DENIES);
+    expect(blocks[0].permissions.ask).toEqual(FUNCTIONS_ASKS);
+    expect(blocks[0].lead).toBe("With the `functions-deploy` block kept, also merge in:");
+    expect(skill()).toContain("The block requires the `supabase-cli` block: the read-back runs on the session's read-only token");
+  });
+
+  it("a session's read-back and function list stay open, and every deploy form is closed", () => {
+    const allBash = [...CREDENTIAL_DENIES, ...FUNCTIONS_DENIES, ...FUNCTIONS_ASKS].filter((r) => r.startsWith("Bash("));
+    for (const cmd of ["npm run functions:readback -- demo abc1234", "supabase functions list"]) expect(matchesAny(allBash, cmd), cmd).toBe(false);
+    for (const cmd of [
+      "npm run functions:deploy -- demo abc1234", "node scripts/functions-deploy.mjs demo abc1234",
+      "supabase functions deploy demo", "supabase functions delete demo", "supabase functions download demo",
+    ])
+      expect(matchesAny(FUNCTIONS_DENIES, cmd), cmd).toBe(true);
+    expect(matchesAny(FUNCTIONS_ASKS, "supabase secrets list")).toBe(true);
+  });
+
+  it("the plain npx form is covered by the credential deny, and the flagged form is named as outside it", () => {
+    const bash = CREDENTIAL_DENIES.filter((r) => r.startsWith("Bash("));
+    expect(matchesAny(bash, "npx supabase functions deploy demo")).toBe(true);
+    expect(matchesAny(bash, "npx --yes supabase@0.0.1 functions deploy demo")).toBe(false);
+    expect(skill()).toContain("an `npx` flag ahead of the package (`npx --yes supabase@<version> ...`, the form the deploy script itself uses), which `Bash(npx supabase*)` does not match;");
   });
 
   it("the push asks cover both forms, bare and with arguments", () => {
@@ -227,7 +312,7 @@ describe("permission rules SKILL.md writes", () => {
   it("plain CLI calls, the session-start check and the expiry variable pass the credential denies", () => {
     const bash = CREDENTIAL_DENIES.filter((r) => r.startsWith("Bash("));
     for (const cmd of [
-      "supabase functions deploy demo", "supabase gen types typescript --linked", "supabase logout", "sh scripts/session-start.sh",
+      "supabase functions list", "supabase gen types typescript --linked", "supabase logout", "sh scripts/session-start.sh",
       "set -e", "npx vitest run", 'echo "$SUPABASE_TOKEN_EXPIRES"', "cat \"$CLAUDE_ENV_FILE\"",
     ])
       expect(matchesAny(bash, cmd), cmd).toBe(false);
@@ -401,7 +486,7 @@ describe("the conventions document", () => {
       "**Skills under `skills/` reach every project live through `install.sh`; files under `templates/` are copied, stamped with the dev-tools commit and become the project's own, so a convention change reaches an existing repo only through a per-project change.**",
     );
     expect(conv()).toContain(
-      "**Every CLI call is the plain command, `supabase ...`, never prefixed by `env`, an inline assignment, `npx`, `sh -c` or any wrapper.**",
+      "**A session's own CLI calls are the plain command, `supabase ...`, never prefixed by `env`, an inline assignment, `npx`, `sh -c` or any wrapper; the human's deploy script runs the pinned CLI through `npx` by design (section 11).**",
     );
   });
 
@@ -415,11 +500,11 @@ describe("the conventions document", () => {
 describe("the session-start check", () => {
   const tmpl = () => read("templates/session-start.sh.tmpl");
 
-  it("carries the provenance wording and its three blocks", () => {
+  it("carries the provenance wording and its four blocks", () => {
     expect(tmpl()).toContain(
       "# Session-start check. Seeded from dev-tools @ {{DEV_TOOLS_SHA}}; this file is\n# now the project's own, and a later port of dev-tools changes updates that\n# commit to the one ported from.",
     );
-    for (const name of ["supabase-cli", "push-guard", "scheduled-ci"])
+    for (const name of ["supabase-cli", "functions-deploy", "push-guard", "scheduled-ci"])
       for (const m of [`# BEGIN:${name}`, `# END:${name}`]) expect(tmpl().split(`\n${m}\n`), m).toHaveLength(2);
   });
 
@@ -720,7 +805,7 @@ describe("the credential convention's prose", () => {
   const SELF = "**When a session must confirm a documentation line that names the variable, or write a commit message that does, it puts the text in a file and uses `command grep -cxF -f <file>` or `git commit -F <file>`; that form is for those two purposes only and never reads, prints, sets or compares the value.**";
   const VERBATIM = "**A verbatim string a session must write comes from a named file at a named commit and is confirmed with `command grep -cxF`; nothing load-bearing in a prompt rides on Markdown emphasis or a leading `#`, because a chat input can drop them.**";
   const INSTR_VERBATIM = "**When a prompt needs a verbatim string written, name the file and commit it comes from and confirm it with `command grep -cxF`; put nothing load-bearing in a prompt on Markdown emphasis or a leading `#`, since a chat input can drop them.**";
-  const TMPL_RULE = "**The Supabase CLI's credential is the `SUPABASE_ACCESS_TOKEN` the committed SessionStart hook in `.claude/settings.json` loads at session start, for this project only, from `~/.config/{{PROJECT_SLUG}}/`, which sessions never read or write; run CLI commands plain (`supabase ...`), never through `env`, an inline assignment or a wrapper, never run `supabase login`, and run the session-start check (`sh scripts/session-start.sh`) at pre-flight. To confirm a documentation line that names the variable, or to write a commit message that does, put the text in a file and use `command grep -cxF -f <file>` or `git commit -F <file>`, for those two purposes only.**";
+  const TMPL_RULE = "**The Supabase CLI's credential is the `SUPABASE_ACCESS_TOKEN` the committed SessionStart hook in `.claude/settings.json` loads at session start, for this project only and with read scopes only, from `~/.config/{{PROJECT_SLUG}}/`, which sessions never read or write; run CLI commands plain (`supabase ...`), never through `env`, an inline assignment or a wrapper, never run `supabase login`, and run the session-start check (`sh scripts/session-start.sh`) at pre-flight. To confirm a documentation line that names the variable, or to write a commit message that does, put the text in a file and use `command grep -cxF -f <file>` or `git commit -F <file>`, for those two purposes only.**";
 
   it("section 1 states the hook, the sources list, the login rule, the expiry file and the sanctioned form", () => {
     const s1 = section(conv(), "## 1.", "## 2.");
@@ -786,6 +871,155 @@ describe("planning-chat conventions", () => {
     const c = conv();
     expect(section(c, "## 0.", "## 1.")).toContain(DEF);
     expect(c.split("(planning-chat convention)").length - 1).toBe(1);
+  });
+});
+
+describe("Edge Function deploys", () => {
+  const conv = () => read("reference/conventions.md");
+  const gs = () => readFileSync(fileURLToPath(new URL("../../../../GETTING-STARTED.md", import.meta.url)), "utf8");
+  const tmpl = () => read("templates/CLAUDE.md.tmpl");
+  const instr = () => read("templates/claude-ai-project-instructions.md.tmpl");
+  const rows = () => skill().split("\n").filter((l) => l.startsWith("| "));
+  const between = (text: string, from: string, to: string) => {
+    const start = text.indexOf(from);
+    expect(start, from).toBeGreaterThanOrEqual(0);
+    const rest = text.slice(start);
+    const end = rest.indexOf(to, from.length);
+    expect(end, to).toBeGreaterThan(0);
+    return rest.slice(0, end);
+  };
+  const stripBlock = (text: string, name: string) => {
+    const open = `<!-- BEGIN:${name} -->`;
+    const close = `<!-- END:${name} -->\n`;
+    let s = text;
+    while (s.includes(open)) s = s.slice(0, s.indexOf(open)) + s.slice(s.indexOf(close, s.indexOf(open)) + close.length);
+    return s;
+  };
+
+  it("the templates exist with their provenance line, and carry nothing of the source's", () => {
+    for (const name of ["functions-deploy.mjs.tmpl", "functions-readback.mjs.tmpl", "cli-pin.test.ts.tmpl"]) {
+      const t = read(`templates/${name}`);
+      expect(t.startsWith("// Seeded from dev-tools @ {{DEV_TOOLS_SHA}}; this file is now the project's own,\n// and a later port of dev-tools changes updates that commit to the one ported\n// from.\n"), name).toBe(true);
+      for (const gone of ["EXPECTED_REF", "auth-config", "docs/decisions/", "Reasoning:"]) expect(t, gone).not.toContain(gone);
+      expect(t, "a date").not.toMatch(/20[0-9]{2}-[0-9]{2}/);
+    }
+  });
+
+  it("the CLI row names read scopes and a one-run token, and no longer lists deploys", () => {
+    const row = rows().find((l) => l.startsWith('| "Will Claude Code run the Supabase CLI'))!;
+    expect(row).not.toContain("(deploys, generated types)");
+    expect(row).toContain("Its token has read scopes only; anything that writes, like a deploy, uses a separate one-run token");
+  });
+
+  it("the Edge Functions row follows the CLI row, asked only when that row is yes", () => {
+    const all = rows();
+    const cli = all.findIndex((l) => l.startsWith('| "Will Claude Code run the Supabase CLI'));
+    expect(all[cli + 1].startsWith('| "Will the app have Edge Functions?')).toBe(true);
+    expect(all[cli + 1]).toContain("| the CLI-token row is yes;");
+    expect(skill()).toContain("wherever `supabase-cli` is stripped, every `functions-deploy` block is too, and the Edge Functions row is not asked.");
+  });
+
+  it("steps 5b and 5c write the two scripts, the package.json scripts and the rules", () => {
+    const b = between(skill(), "**b. Docs and the contract test**", "**c. `.claude/settings.json`");
+    expect(b).toContain("write `templates/functions-deploy.mjs.tmpl` as `scripts/functions-deploy.mjs` and `templates/functions-readback.mjs.tmpl` as `scripts/functions-readback.mjs`");
+    expect(b).toContain('`"functions:deploy": "node scripts/functions-deploy.mjs"` and `"functions:readback": "node scripts/functions-readback.mjs"`');
+    expect(b).toContain("When step 2 filled `CLI_PIN_WORKFLOW`, also write `templates/cli-pin.test.ts.tmpl`");
+    expect(skill()).toContain("or the two `functions:*` scripts a yes to the step-3 Edge Functions row approved.");
+    expect(between(skill(), "**c. `.claude/settings.json`", "**d. The Claude.ai instructions**")).toContain("List these in `CONFIG.settingsRules` like every other rule here.");
+  });
+
+  it("the report names the deploy command, the ref's case arm and the one-run token's scopes", () => {
+    const r = between(skill(), "## 7. Report", "## Known limits");
+    expect(r).toContain("`npm run functions:deploy -- <slug> <commit>`, which the user runs in their own terminal once the change is committed;");
+    expect(r).toContain("the `SUPABASE_PROJECT_REF` export inside the shell case arm");
+    expect(r).toContain("created in the dashboard for this project with Edge Functions read and write and the shortest expiry, typed at the script's hidden prompt and revoked right after the run.");
+  });
+
+  it("CLAUDE.md template: the order, in the functions-deploy block", () => {
+    const block = between(tmpl(), "<!-- BEGIN:functions-deploy -->", "<!-- END:functions-deploy -->");
+    const at = (s: string) => { const i = block.indexOf(s); expect(i, s).toBeGreaterThanOrEqual(0); return i; };
+    const order = ["local gates green", "commit;", "the session stops and asks the human to run `npm run functions:deploy -- <slug> <commit>`", "`SUPABASE_PROJECT_REF` must be set", "through the read-only connector the entrypoint, `verify_jwt` and an update time after the deploy started", "smoke-tests the function", "then push", "then read CI"].map(at);
+    expect(order).toEqual([...order].sort((a, b) => a - b));
+    expect(block).toContain("**A prompt with a deploy is never unattended.**");
+  });
+
+  it("CLAUDE.md template: no session deploys, in the rule, the connector line and auto mode", () => {
+    const t = tmpl();
+    expect(t).not.toContain("supabase functions deploy <name>");
+    expect(t).not.toContain("deploy in the same session as the edit");
+    expect(t).toContain("reserve the writable connector for rolled-back probes alone.**");
+    expect(t).toContain("<!-- BEGIN:functions-deploy -->\n- No session deploys an Edge Function: the human runs each deploy in their own terminal, so a prompt with a deploy is never unattended.\n<!-- END:functions-deploy -->");
+  });
+
+  it("CLAUDE.md template: with the block stripped, only the no-deploy-on-push fact remains, and it tells nobody to deploy", () => {
+    const s = between(stripBlock(tmpl(), "functions-deploy"), "## Supabase", "## Running in auto mode");
+    expect(s).toContain("**Edge Functions do not deploy on git push:");
+    expect(s).not.toMatch(/functions:deploy|functions:readback|deploy in the same session/);
+    const fact = s.split("\n").find((l) => l.startsWith("**Edge Functions do not deploy on git push:"))!;
+    expect(fact).not.toMatch(/\b(deploy it|must deploy|session deploys)\b/);
+  });
+
+  it("a session's ref comes from settings.local.json's env key, and the read-back is the plain command", () => {
+    const block = between(tmpl(), "<!-- BEGIN:functions-deploy -->", "<!-- END:functions-deploy -->");
+    expect(block).toContain("To re-check a deployed function, run `npm run functions:readback -- <slug> <commit>`, which runs on the session's read-only token.**");
+    expect(block).toContain("**A session's `SUPABASE_PROJECT_REF` comes from the `env` key in the untracked `.claude/settings.local.json`; a session never sets it inline.**");
+    const [env] = jsonBlocks().filter((b) => (b as { env?: unknown }).env);
+    expect((env as { env?: unknown }).env).toEqual({ SUPABASE_PROJECT_REF: "<ref>" });
+    expect(env.lead).toBe("With the `functions-deploy` block kept and a real ref (one the user answered or confirmed, never `$SUPABASE_PROJECT_REF`), merge this into `.claude/settings.local.json`, with `<ref>` filled, never replacing what is already there:");
+    expect(skill()).toContain("With no real ref yet, the report says to add the key once the project exists.");
+    expect(between(skill(), "## 7. Report", "## Known limits")).toContain("It also names the `SUPABASE_PROJECT_REF` key under `env` in `.claude/settings.local.json`,");
+    expect(between(conv(), "## 11.", "Routes rejected:")).toContain("A session's `SUPABASE_PROJECT_REF` comes from the `env` key in the untracked `.claude/settings.local.json`, never an inline assignment;");
+  });
+
+  it("no template line sets SUPABASE_PROJECT_REF as an inline assignment", () => {
+    const dir = `${SKILL_DIR}templates/`;
+    const names = readdirSync(dir);
+    expect(names.length).toBeGreaterThan(5);
+    for (const name of names)
+      read(`templates/${name}`).split("\n").forEach((line, i) => expect(/\bSUPABASE_PROJECT_REF=/.test(line), `${name}:${i + 1}`).toBe(false));
+  });
+
+  it("instructions template: both schema lines end a function prompt at the human's deploy", () => {
+    const t = instr();
+    expect(t).not.toContain("a function's deploy command goes in the same prompt that edits it");
+    expect(t.split("a prompt that changes a function ends at the human's deploy, says so, and is never unattended.**").length - 1).toBe(2);
+    expect(t).toContain("rolled-back behavioral probes alone;");
+    expect(t).not.toContain("behavioral probes and deploys");
+    expect(between(t, "<!-- BEGIN:functions-deploy -->", "<!-- END:functions-deploy -->")).toContain("`SUPABASE_PROJECT_REF` set there and a one-run token");
+  });
+
+  it("conventions section 1: a read-only token, and the ref inside the arm", () => {
+    const s1 = between(conv(), "## 1.", "## 2.");
+    expect(s1).toContain("reaching this one project with read scopes only");
+    expect(s1).toContain("**A session's standing token is read-only;");
+    expect(s1).toContain('"$HOME/projects/<slug>"/*)\n    export SUPABASE_PROJECT_REF="<ref>"\n    [ -r "$HOME/.config/<slug>/supabase-token" ]');
+    expect(s1).toContain("**The ref export stays inside the arm, never on a line of its own.**");
+  });
+
+  it("conventions section 11: one route, the boundary, the order, the read-back, the pin, three rejected routes and the index lines", () => {
+    const s11 = conv().slice(conv().indexOf("## 11. Edge Function deploys"));
+    for (const line of [
+      "**One route: the human runs `npm run functions:deploy -- <slug> <commit>` in their own terminal,",
+      "Denies and asks match command text, so a writable token in a session's environment can be used past them",
+      "and only the token's scope holds.**",
+      "**Commit, then deploy HEAD, then verify, then push:",
+      "as a set and byte for byte;",
+      "**One constant pins the CLI, `SUPABASE_CLI_VERSION` in `scripts/functions-deploy.mjs`;",
+      "- A connector deploy:",
+      "- A session deploying with the CLI:",
+      "- CI deploying on push:",
+    ])
+      expect(s11, line).toContain(line);
+    for (const start of ["- Implemented in:", "- Invariant:", "- Project-owned:"]) expect(s11.split("\n").filter((l) => l.startsWith(start)), start).toHaveLength(1);
+  });
+
+  it("GETTING-STARTED section 7: a read-only token, a one-run deploy token, and the arm carries the ref", () => {
+    const s7 = between(gs(), "### CLI token", "## 8.");
+    expect(s7).toContain("with read scopes only");
+    expect(s7).not.toContain("used for deploys");
+    expect(s7).toContain("your project's ID in place of `<ref>`");
+    expect(s7).toContain("create an access token for this project with Edge Functions read and write and the shortest expiry on offer");
+    expect(s7).toContain("npm run functions:deploy -- <slug> <commit>");
   });
 });
 

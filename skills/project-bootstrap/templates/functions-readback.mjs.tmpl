@@ -1,0 +1,221 @@
+// Seeded from dev-tools @ {{DEV_TOOLS_SHA}}; this file is now the project's own,
+// and a later port of dev-tools changes updates that commit to the one ported
+// from.
+//
+// npm run functions:readback -- <slug> <commit> — the byte-for-byte read-back
+// of a deployed Edge Function. Downloads the live function's files with the
+// pinned CLI (`functions download <slug> --use-api`, unbundled server-side, no
+// Docker) into a fresh temporary directory outside the repository, and
+// compares them, as a set and byte for byte, with the function's directory at
+// <commit>. Prints one line per file (its path, byte count and the sha256 of
+// each side) and exits 0 only when every committed file is deployed with the
+// same bytes and nothing else was deployed; 1 means a difference, 2 that the
+// read-back could not run.
+//
+// The project comes from SUPABASE_PROJECT_REF. The token is the environment's,
+// read by the CLI itself and never by this script; Edge Functions read is
+// enough. The child's environment is passed through unchanged and never
+// printed. The CLI runs with its working directory set to the temporary
+// directory, because any CLI run writes its update-check cache into
+// ./supabase/.temp/.
+import { closeSync, mkdirSync, mkdtempSync, openSync, readFileSync, readdirSync, realpathSync, rmSync, statSync } from "node:fs";
+import { execFileSync, spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
+import { tmpdir } from "node:os";
+import { isAbsolute, join, relative, sep } from "node:path";
+import { pathToFileURL } from "node:url";
+import { SUPABASE_CLI_VERSION, maskSecrets } from "./functions-deploy.mjs";
+
+/**
+ * Files the CLI writes into the work directory that are not function source,
+ * by exact path relative to it. Each is listed as present but never compared,
+ * and is never required. Nothing else is skipped, by pattern or otherwise.
+ */
+export const ALLOWED_EXTRAS = Object.freeze({
+  // The CLI's update-check cache, written by any CLI run into the working
+  // directory's supabase/.temp/, so it is never deployed code.
+  "supabase/.temp/cli-latest": "the Supabase CLI's update-check cache",
+});
+
+/**
+ * Only to show the work-directory guard refusing: a path the script then
+ * checks as if it were its own temporary directory. It is never downloaded
+ * into or removed; a path the guard accepts is refused too.
+ */
+export const TEST_WORKDIR_VAR = "READBACK_TEST_WORKDIR";
+
+/**
+ * @typedef {"equal" | "DIFFERENT" | "MISSING" | "EXTRA" | "ESCAPED" | "REFUSED" | "allowed"} Status
+ * @typedef {{ status: Status, path: string, committed?: Buffer, deployed?: Buffer, reason?: string }} Row
+ */
+
+/** A path that would point outside the directory it is read against. */
+export const unsafePath = (/** @type {string} */ path) => path === "" || isAbsolute(path) || path.includes("..");
+
+/** Whether `path` is `top` or inside it; both must already be real paths. */
+export function insideTree(/** @type {string} */ path, /** @type {string} */ top) {
+  const rel = relative(top, path);
+  return rel === "" || !(rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel));
+}
+
+/** @param {Buffer} bytes */
+export const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
+
+/**
+ * Pure comparison of the committed and deployed sets. Rows come out in path
+ * order. A path that is absolute or contains ".." is REFUSED wherever it
+ * appears; a path the CLI reported extracting but that is not in the work
+ * directory is ESCAPED; an entry that is not a regular file is REFUSED.
+ * @param {{
+ *   committed: Map<string, Buffer>,
+ *   deployed: Map<string, Buffer>,
+ *   extracted?: string[],
+ *   irregular?: string[],
+ *   allowed?: Readonly<Record<string, string>>,
+ * }} input
+ * @returns {{ rows: Row[], equal: number, differences: number, ok: boolean }}
+ */
+export function compareReadback({ committed, deployed, extracted = [], irregular = [], allowed = ALLOWED_EXTRAS }) {
+  const paths = [...new Set([...committed.keys(), ...deployed.keys(), ...extracted, ...irregular])].sort();
+  /** @type {Row[]} */
+  const rows = paths.map((path) => {
+    const c = committed.get(path);
+    const d = deployed.get(path);
+    if (unsafePath(path)) return { status: "REFUSED", path, reason: 'absolute or contains ".."' };
+    if (irregular.includes(path)) return { status: "REFUSED", path, reason: "not a regular file" };
+    if (c && d) return { status: c.equals(d) ? "equal" : "DIFFERENT", path, committed: c, deployed: d };
+    if (c) return { status: "MISSING", path, committed: c };
+    if (d) return Object.hasOwn(allowed, path) ? { status: "allowed", path, deployed: d, reason: allowed[path] } : { status: "EXTRA", path, deployed: d };
+    return { status: "ESCAPED", path, reason: "the CLI reported extracting it, but it is not in the work directory" };
+  });
+  const equal = rows.filter((r) => r.status === "equal").length;
+  const differences = rows.filter((r) => r.status !== "equal" && r.status !== "allowed").length;
+  return { rows, equal, differences, ok: differences === 0 && equal > 0 };
+}
+
+/** @param {Buffer | undefined} b @param {string} label */
+const side = (b, label) => (b ? `${label} ${b.length} bytes ${sha256(b)}` : `${label}: absent`);
+
+/**
+ * One line per row, then the verdict.
+ * @param {ReturnType<typeof compareReadback>} result
+ * @returns {string[]}
+ */
+export function formatReadback({ rows, equal, differences, ok }) {
+  const lines = rows.map((r) => {
+    const head = `  ${r.status.padEnd(9)}  ${r.path}`;
+    if (r.status === "equal") return `${head}  ${r.committed?.length} bytes  committed ${sha256(/** @type {Buffer} */ (r.committed))}  deployed ${sha256(/** @type {Buffer} */ (r.deployed))}`;
+    if (r.status === "allowed") return `${head}  ${side(r.deployed, "deployed")}  not compared: ${r.reason}`;
+    if (r.reason) return `${head}  ${r.reason}`;
+    return `${head}  ${side(r.committed, "committed")}  ${side(r.deployed, "deployed")}`;
+  });
+  if (ok) lines.push(`readback: ${equal} files equal`);
+  else if (differences === 0) lines.push("readback: no files to compare");
+  else lines.push(`readback: ${differences} differences, ${equal} files equal`);
+  return lines;
+}
+
+/** The paths the CLI says it extracted, from its own output. */
+export const extractedPaths = (/** @type {string} */ log) => [...log.matchAll(/^Extracting file: (.+)$/gm)].map((m) => m[1].trim());
+
+/** Every entry under `root`, by its path relative to it with "/" separators. */
+function walk(/** @type {string} */ root) {
+  /** @type {Map<string, Buffer>} */
+  const files = new Map();
+  /** @type {string[]} */
+  const irregular = [];
+  const visit = (/** @type {string} */ dir) => {
+    for (const entry of readdirSync(dir, { withFileTypes: true })) {
+      const full = join(dir, entry.name);
+      const rel = relative(root, full).split(sep).join("/");
+      if (entry.isDirectory()) visit(full);
+      else if (entry.isFile()) files.set(rel, readFileSync(full));
+      else irregular.push(rel);
+    }
+  };
+  visit(root);
+  return { files, irregular };
+}
+
+/** @param {string[]} args */
+const git = (args) => execFileSync("git", args, { maxBuffer: 256 * 1024 * 1024, stdio: ["ignore", "pipe", "pipe"] });
+
+/** @param {Buffer} out */
+const nulList = (out) => out.toString("utf8").split("\0").filter((s) => s !== "");
+
+class Refusal extends Error {}
+
+/**
+ * @param {string[]} argv
+ * @param {{ out: (line: string) => void, env: NodeJS.ProcessEnv }} io
+ * @returns {number} exit code: 0 equal, 1 differences, 2 refused or failed
+ */
+export function main(argv, { out, env }) {
+  /** @type {string | null} */
+  let tmp = null;
+  try {
+    if (argv.length !== 2 || argv.some((a) => a === "" || a.startsWith("-"))) {
+      throw new Refusal("usage: npm run functions:readback -- <slug> <commit>");
+    }
+    const [slug, commit] = argv;
+    let sha;
+    try {
+      sha = git(["rev-parse", "--verify", "--quiet", `${commit}^{commit}`]).toString("utf8").trim();
+    } catch {
+      throw new Refusal(`not a commit: ${commit}`);
+    }
+    const slugs = nulList(git(["ls-tree", "-d", "-z", "--name-only", sha, "--", "supabase/functions/"])).map((p) => p.slice("supabase/functions/".length));
+    if (!slugs.includes(slug)) throw new Refusal(`not a function at ${sha.slice(0, 7)}: ${slug} (functions: ${slugs.join(", ")})`);
+
+    const top = realpathSync(git(["rev-parse", "--show-toplevel"]).toString("utf8").trim());
+    const probe = env[TEST_WORKDIR_VAR];
+    if (!probe) tmp = mkdtempSync(join(tmpdir(), "functions-readback-"));
+    const candidate = realpathSync(probe || /** @type {string} */ (tmp));
+    if (insideTree(candidate, top)) throw new Refusal(`work directory ${candidate} is inside the repository (${top}); nothing downloaded`);
+    if (probe) throw new Refusal(`${TEST_WORKDIR_VAR} is accepted only to show the guard refusing; unset it`);
+
+    const ref = env.SUPABASE_PROJECT_REF ?? "";
+    if (!/^[a-z]{20}$/.test(ref)) throw new Refusal("SUPABASE_PROJECT_REF is unset or does not look like a project ref");
+
+    const work = join(candidate, "work");
+    mkdirSync(work);
+    const logPath = join(candidate, "download.log");
+    const fd = openSync(logPath, "w");
+    const run = spawnSync("npx", ["--yes", `supabase@${SUPABASE_CLI_VERSION}`, "functions", "download", slug, "--use-api", "--project-ref", ref, "--workdir", work], {
+      cwd: work,
+      env,
+      stdio: ["ignore", fd, fd],
+    });
+    closeSync(fd);
+    const log = maskSecrets(readFileSync(logPath, "utf8"));
+    if (run.error || run.status !== 0) {
+      out(`download failed (${run.error ? run.error.message : `exit ${run.status}`}); the CLI said:`);
+      for (const line of log.split("\n").filter((l) => l.trim() !== "")) out(`  ${line}`);
+      return 2;
+    }
+
+    /** @type {Map<string, Buffer>} */
+    const committed = new Map();
+    for (const path of nulList(git(["ls-tree", "-r", "-z", "--name-only", sha, "--", `supabase/functions/${slug}/`]))) {
+      committed.set(path, git(["show", `${sha}:${path}`]));
+    }
+    const { files: deployed, irregular } = walk(work);
+    out(`readback: ${slug}, deployed against ${sha}`);
+    const result = compareReadback({ committed, deployed, extracted: extractedPaths(log), irregular });
+    for (const line of formatReadback(result)) out(line);
+    return result.ok ? 0 : 1;
+  } catch (e) {
+    if (e instanceof Refusal) {
+      out(`readback refused: ${e.message}`);
+      return 2;
+    }
+    out(`readback failed: ${e instanceof Error ? maskSecrets(e.message) : "error"}`);
+    return 2;
+  } finally {
+    if (tmp && statSync(tmp, { throwIfNoEntry: false })) rmSync(tmp, { recursive: true });
+  }
+}
+
+if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
+  process.exitCode = main(process.argv.slice(2), { out: (line) => console.log(line), env: process.env });
+}

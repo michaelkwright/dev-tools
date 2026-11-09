@@ -10,6 +10,9 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 const TMPL = readFileSync(fileURLToPath(new URL("../../templates/session-start.sh.tmpl", import.meta.url)), "utf8");
 const BLOCKS = ["supabase-cli", "push-guard", "scheduled-ci"];
+// Every optional block in the template. The existing cases keep BLOCKS; the
+// functions-deploy cases add theirs, with its stub CLI and the deploy script.
+const ALL_BLOCKS = [...BLOCKS, "functions-deploy"];
 const TOKEN = "stub-token-value-never-printed";
 // A local YYYY-MM-DD some days from the clock at test time (the script reads
 // `date +%Y-%m-%d`, local too). A literal day offset at every call site, never
@@ -25,7 +28,7 @@ const CLEAR = { SUPABASE_ACCESS_TOKEN: TOKEN, SUPABASE_TOKEN_EXPIRES: dateDaysAh
 // block, delete kept blocks' marker lines, fill the placeholders.
 const fill = (keep: string[], ciCmd = "echo scheduled-run-listed") => {
   let s = TMPL.replace(/^(#!\/bin\/sh\n)# TEMPLATE NOTES[^]*?\n\n/, "$1");
-  for (const b of BLOCKS)
+  for (const b of ALL_BLOCKS)
     s = keep.includes(b)
       ? s.replace(new RegExp(`^# (BEGIN|END):${b}\\n`, "gm"), "")
       : s.replace(new RegExp(`^# BEGIN:${b}\\n[^]*?^# END:${b}\\n`, "m"), "");
@@ -140,6 +143,63 @@ describe("session-start check", () => {
   it("a stripped block checks nothing", () => {
     expect(run(fill(["push-guard"])).status).toBe(0);
     expect(run(fill([]), {}, null)).toMatchObject({ status: 0, err: [], out: "" });
+  });
+});
+
+describe("session-start check: the functions-deploy block", () => {
+  const DEPLOY = readFileSync(fileURLToPath(new URL("../../templates/functions-deploy.mjs.tmpl", import.meta.url)), "utf8");
+  const PIN = DEPLOY.match(/^export const SUPABASE_CLI_VERSION = "([^"]+)";$/m)![1];
+  const script = () => fill([...BLOCKS, "functions-deploy"]);
+
+  // A stub supabase first on PATH, printing `version` or, for null, nothing and exit 127.
+  const stubCli = (version: string | null) => {
+    const bin = join(dir, "stub-bin");
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, "supabase"), version === null ? "#!/bin/sh\nexit 127\n" : `#!/bin/sh\necho "${version}"\n`);
+    chmodSync(join(bin, "supabase"), 0o755);
+    return { ...CLEAR, PATH: `${bin}:${process.env.PATH ?? ""}` };
+  };
+  const writeDeploy = (text = DEPLOY) => {
+    mkdirSync(join(dir, "scripts"), { recursive: true });
+    writeFileSync(join(dir, "scripts/functions-deploy.mjs"), text);
+  };
+
+  it("is silent when the installed CLI equals the constant", () => {
+    writeDeploy();
+    expect(run(script(), stubCli(PIN))).toMatchObject({ status: 0, err: [] });
+  });
+
+  it("warns, without failing, when the installed CLI differs, naming both versions", () => {
+    writeDeploy();
+    const r = run(script(), stubCli("0.0.1"));
+    expect(r.status).toBe(0);
+    expect(r.err).toHaveLength(1);
+    expect(r.err[0]).toMatch(/^session-start: warning: this machine's Supabase CLI is 0\.0\.1, scripts\/functions-deploy\.mjs pins /);
+    expect(r.err[0]).toContain(PIN);
+  });
+
+  it("warns, without failing, when the CLI is not installed", () => {
+    writeDeploy();
+    const r = run(script(), stubCli(null));
+    expect(r.status).toBe(0);
+    expect(r.err).toEqual([expect.stringContaining("Supabase CLI is not installed")]);
+  });
+
+  it("reads the constant out of the deploy script, not a copy of its own", () => {
+    writeDeploy(DEPLOY.replace(`"${PIN}"`, '"9.9.9"'));
+    expect(run(script(), stubCli("9.9.9"))).toMatchObject({ status: 0, err: [] });
+    expect(run(script(), stubCli(PIN)).err[0]).toContain("pins 9.9.9;");
+  });
+
+  it("warns, without failing, when the deploy script is absent", () => {
+    const r = run(script(), stubCli(PIN));
+    expect(r.status).toBe(0);
+    expect(r.err).toEqual([expect.stringContaining("pins no version")]);
+  });
+
+  it("a stripped block checks nothing", () => {
+    writeDeploy();
+    expect(run(fill(BLOCKS), stubCli("0.0.1"))).toMatchObject({ status: 0, err: [] });
   });
 });
 

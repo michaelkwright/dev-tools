@@ -1,0 +1,24 @@
+// Seeded from dev-tools @ {{DEV_TOOLS_SHA}}; this file is now the project's own,
+// and a later port of dev-tools changes updates that commit to the one ported
+// from.
+//
+// Holds the version a CI workflow installs with supabase/setup-cli equal to
+// the one SUPABASE_CLI_VERSION in scripts/functions-deploy.mjs. Vitest runs it
+// from the repo root.
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+import { describe, expect, it } from "vitest";
+
+const WORKFLOW = "{{CLI_PIN_WORKFLOW}}";
+
+describe("Supabase CLI pin", () => {
+  it("equals the version: line under supabase/setup-cli in the workflow", async () => {
+    const { SUPABASE_CLI_VERSION } = await import(/* @vite-ignore */ pathToFileURL(resolve("scripts/functions-deploy.mjs")).href);
+    const lines = readFileSync(WORKFLOW, "utf8").split("\n");
+    const at = lines.findIndex((l) => l.includes("uses: supabase/setup-cli@"));
+    expect(at).toBeGreaterThan(-1);
+    const version = lines.slice(at + 1, at + 4).map((l) => /^\s+version:\s*["']?([^\s"']+)["']?\s*$/.exec(l)).find(Boolean);
+    expect(version?.[1]).toBe(SUPABASE_CLI_VERSION);
+  });
+});

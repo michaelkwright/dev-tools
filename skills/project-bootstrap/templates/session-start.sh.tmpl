@@ -7,6 +7,7 @@
 #   SCHEDULED_CI_CMD  Latest scheduled CI runs (scheduled-ci), as in CLAUDE.md.
 # Optional blocks sit between "# BEGIN:<name>" and "# END:<name>" lines.
 #   supabase-cli  Keep only when CLAUDE.md keeps its supabase-cli block.
+#   functions-deploy  Keep only when CLAUDE.md keeps its functions-deploy block.
 #   push-guard    Keep in every target. When core.hooksPath already named
 #                 another folder (step 5c), write that folder for .githooks.
 #   scheduled-ci  Keep only when CLAUDE.md keeps its scheduled-ci block.
@@ -60,6 +61,16 @@ else
   esac
 fi
 # END:supabase-cli
+
+# BEGIN:functions-deploy
+# This machine's Supabase CLI against the version the deploy script pins: a
+# warning, never a failure.
+pinned_cli="$(sed -n 's/^export const SUPABASE_CLI_VERSION = "\([^"]*\)";.*/\1/p' scripts/functions-deploy.mjs 2>/dev/null | head -n 1)"
+installed_cli="$(supabase --version 2>/dev/null | head -n 1)"
+if [ "$installed_cli" != "$pinned_cli" ]; then
+  echo "session-start: warning: this machine's Supabase CLI is ${installed_cli:-not installed}, scripts/functions-deploy.mjs pins ${pinned_cli:-no version}; deploys and read-backs run the pin through npx, so only a plain supabase command is affected" >&2
+fi
+# END:functions-deploy
 
 # BEGIN:push-guard
 if [ "$(git config core.hooksPath)" != ".githooks" ]; then

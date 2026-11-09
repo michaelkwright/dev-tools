@@ -1,6 +1,6 @@
 # Cross-repo conventions
 
-An index of the conventions every bootstrapped repo shares, and of where each one is implemented. The rules themselves live in the templates, the settings rules and the skills; this file names them, so a reader can check one repo against the rest. Only section 1 is written out in full.
+An index of the conventions every bootstrapped repo shares, and of where each one is implemented. The rules themselves live in the templates, the settings rules and the skills; this file names them, so a reader can check one repo against the rest. Only sections 1 and 11 are written out in full.
 
 ## 0. Scope and how to read this
 
@@ -24,7 +24,10 @@ Why: each of the three leaves a repo looking set up while one protection is gone
 **One limited-permission credential per project, stored outside every repo at `~/.config/<slug>/supabase-token` with mode 600, loaded only in that project's sessions.**
 Why: a shared credential becomes the one that one project revokes or mis-scopes for the other, and anything that exports it for every folder hands one project's token to another's session.
 
-`<slug>` is the project name, lowercased, spaces as dashes (`order-desk`). Limited permission means a scoped access token from the Supabase dashboard, reaching this one project with only the permissions its CLI calls need ([Supabase's access tokens](https://supabase.com/docs/guides/platform/personal-access-tokens)).
+`<slug>` is the project name, lowercased, spaces as dashes (`order-desk`). Limited permission means a scoped access token from the Supabase dashboard, reaching this one project with read scopes only ([Supabase's access tokens](https://supabase.com/docs/guides/platform/personal-access-tokens)).
+
+**A session's standing token is read-only; anything that writes goes through a one-run token the human creates, types and revokes (section 11).**
+Why: denies and asks match command text, so only the token's own scope limits what a session can do past them.
 
 **A session's token comes from the committed SessionStart hook in `.claude/settings.json`, which writes the token file's path, never its value, into the env file Claude Code runs before each Bash command; the hook is pinned in the settings ratchet, because it is not a Bash tool call and no deny applies to it.**
 Why: the hook runs in every session, desktop or terminal, from the repo's own committed file, so no shell profile has to be right first; and since a deny cannot see the hook, only the ratchet turns an edit that makes it print the token into a failing run.
@@ -39,11 +42,17 @@ One case arm per project, in the file your shell reads when it starts: `~/.zshrc
 ```bash
 case "$PWD" in
   "$HOME/projects/<slug>"|"$HOME/projects/<slug>"/*)
+    export SUPABASE_PROJECT_REF="<ref>"
     [ -r "$HOME/.config/<slug>/supabase-token" ] && export SUPABASE_ACCESS_TOKEN="$(cat "$HOME/.config/<slug>/supabase-token")" ;;
 esac
 ```
 
 The arm names the folder the repo actually lives in; `$HOME/projects/<slug>` is the layout GETTING-STARTED section 3 sets up, so change both patterns in the arm if yours lives elsewhere.
+
+**The ref export stays inside the arm, never on a line of its own.**
+Why: a profile-wide export hands one project's ref to every terminal, and the deploy script would deploy to whichever one it found.
+
+A repo with Edge Functions needs this arm in the terminal the human deploys from, for the ref (section 11).
 
 The profile runs once, when the shell starts, so a terminal opened in another folder and then moved into the project has no token: open a new terminal in the project's folder.
 
@@ -56,7 +65,7 @@ Why: the fallback turns a token that failed to load into the account's full reac
 **The token's expiry date lives in a second, non-secret file, `~/.config/<slug>/supabase-token-expires`: one line, `YYYY-MM-DD`, the date the dashboard shows. The hook exports it as `SUPABASE_TOKEN_EXPIRES`; the session-start check fails when it is missing, malformed or past, and warns within 14 days. The human maintains the date when the token is rotated.**
 Why: a token that expires fails as a 401 mid-task, and the date is the one fact about it a check can read without touching the secret.
 
-**Every CLI call is the plain command, `supabase ...`, never prefixed by `env`, an inline assignment, `npx`, `sh -c` or any wrapper.**
+**A session's own CLI calls are the plain command, `supabase ...`, never prefixed by `env`, an inline assignment, `npx`, `sh -c` or any wrapper; the human's deploy script runs the pinned CLI through `npx` by design (section 11).**
 Why: committed rules match the command text from its start, and a wrapper makes a different string of the same action; a session that needs a different credential has found a setup bug, not a reason to prefix.
 
 **The session-start check tests only that the variable is non-empty, and never prints, echoes, compares or logs its value.**
@@ -74,17 +83,17 @@ Why: a session that believes the denies are a boundary stops looking at what run
 `permissions.blockReadsOutsideWorkingDirectories` is not the answer: with it on, a skill still loads through its `~/.claude/skills` symlink but cannot read its own files, which breaks any skill that reads its templates, project-bootstrap included.
 
 - Implemented in: `.claude/settings.json`'s SessionStart hook and its pin in `CONFIG.settingsRules.hooks`; `CLAUDE.md.tmpl`'s `supabase-cli` blocks (the Supabase section and Running in auto mode); `session-start.sh.tmpl`'s `supabase-cli` block (the variable and the expiry check); `SKILL.md` step 3's CLI row and step 5c's credential denies and hook, listed in `CONFIG.settingsRules` (the hook in its `hooks` list); `GETTING-STARTED.md` section 7, "CLI token".
-- Invariant: the path pattern `~/.config/<slug>/supabase-token`, mode 600, the variable name `SUPABASE_ACCESS_TOKEN`; the hook command's shape (guarded by `CLAUDE_ENV_FILE` and a readable token file, one `export` line holding a command substitution of the token file appended to `$CLAUDE_ENV_FILE`, a second for `SUPABASE_TOKEN_EXPIRES` from `~/.config/<slug>/supabase-token-expires`, `"$HOME"` never `~`, nothing on stdout); the plain-command rule; the check's shape (non-empty, never read; the expiry date failed when missing, malformed or past); and the deny shapes, `Bash(supabase login*)` among them.
+- Invariant: the path pattern `~/.config/<slug>/supabase-token`, mode 600, the variable name `SUPABASE_ACCESS_TOKEN`; the hook command's shape (guarded by `CLAUDE_ENV_FILE` and a readable token file, one `export` line holding a command substitution of the token file appended to `$CLAUDE_ENV_FILE`, a second for `SUPABASE_TOKEN_EXPIRES` from `~/.config/<slug>/supabase-token-expires`, `"$HOME"` never `~`, nothing on stdout); the plain-command rule for a session's own commands; the session's token read-only; the ref inside the arm; the check's shape (non-empty, never read; the expiry date failed when missing, malformed or past); and the deny shapes, `Bash(supabase login*)` among them.
 - Project-owned: the slug, the token, and the expiry date.
 
 ## 2. Permission rules
 
-**Permission rules live only in the committed `.claude/settings.json`, and every rule bootstrap writes is listed in `CONFIG.settingsRules`; pushes that deploy and every writable-connector call ask each time, and a block is reported, never routed around.**
+**Permission rules live only in the committed `.claude/settings.json`, and every rule bootstrap writes is listed in `CONFIG.settingsRules`; pushes that deploy and every writable-connector call that is not denied ask each time, and a block is reported, never routed around.**
 Why: only the committed file travels with every clone, and a rule outside the ratchet can be deleted unseen.
 
 How rules match ([Claude Code's permissions docs](https://code.claude.com/docs/en/permissions)): a trailing ` *` or `:*` is a prefix that also matches the bare command, and `:*` counts only at the end of a rule; a `*` anywhere else matches any text, spaces included. Deny and ask rules match past any leading `VAR=value` assignment. Claude Code strips only a fixed wrapper list before matching (`timeout`, `time`, `nice`, `nohup`, `stdbuf`, `command`, `builtin`, zsh's `noglob`, and `xargs` without flags), so `env` and `npx` are matched as commands of their own.
 
-- Implemented in: `SKILL.md` step 5c (push denies, `supabase db push` denies, `apply_migration` deny or ask, writable-connector asks, push asks, credential denies); `CLAUDE.md.tmpl`, Running in auto mode; doc-system's settings ratchet (`CONFIG.settingsRules`).
+- Implemented in: `SKILL.md` step 5c (push denies, `supabase db push` denies, `apply_migration` deny or ask, the writable connector's `execute_sql` ask and `deploy_edge_function` deny, push asks, credential denies, functions-deploy denies and ask); `CLAUDE.md.tmpl`, Running in auto mode; doc-system's settings ratchet (`CONFIG.settingsRules`).
 - Invariant: every rule string step 5c writes, and its listing in `CONFIG.settingsRules`.
 - Project-owned: rules the project adds itself, and the connector name the MCP rules are keyed to.
 
@@ -146,10 +155,10 @@ Why: a scoped run of the touched file misses the tests that import it, and `vite
 
 ## 8. Session-start check
 
-**One committed script of the same shape in every repo, `scripts/session-start.sh`, run at pre-flight: the CLI token variable is set (never printed), `git config core.hooksPath` names the guard folder, and the latest scheduled CI run is shown when the repo has one.**
+**One committed script of the same shape in every repo, `scripts/session-start.sh`, run at pre-flight: the CLI token variable is set (never printed), `git config core.hooksPath` names the guard folder, the latest scheduled CI run is shown when the repo has one, and a repo that deploys functions gets a warning when the installed CLI differs from the deploy script's pin.**
 Why: a pre-flight check kept only in prose is rebuilt from memory each session, and a script fails the same way every time.
 
-- Implemented in: `templates/session-start.sh.tmpl` (blocks `supabase-cli`, `push-guard`, `scheduled-ci`); `SKILL.md` step 5c; `CLAUDE.md.tmpl` Session Workflow.
+- Implemented in: `templates/session-start.sh.tmpl` (blocks `supabase-cli`, `functions-deploy`, `push-guard`, `scheduled-ci`); `SKILL.md` step 5c; `CLAUDE.md.tmpl` Session Workflow.
 - Invariant: the path, one stderr line per failure, a non-zero exit on any failure, the value never printed.
 - Project-owned: which blocks are kept, the scheduled-CI command, and checks the project adds.
 
@@ -175,3 +184,34 @@ Why: the settings ratchet catches a deleted rule in its own repo, but only a com
 - Implemented in: this document; doc-system's settings ratchet catches the first kind between audits.
 - Invariant: the three drift kinds from section 0.
 - Project-owned: when the audit runs.
+
+## 11. Edge Function deploys
+
+**One route: the human runs `npm run functions:deploy -- <slug> <commit>` in their own terminal, with a one-run token they create, type at a hidden prompt and revoke.**
+Why: a deploy writes to production, so it takes a credential no session holds, and one route means one set of guards and one thing to verify.
+
+**A session never holds a writable Supabase credential. Denies and asks match command text, so a writable token in a session's environment can be used past them (a script, a wrapper, an `npx` flag ahead of the package), and only the token's scope holds.**
+Why: a rule stops the spellings it names, and a token's scope stops every spelling.
+
+**The script refuses without a terminal on both stdin and stdout, and it never reads a token from its environment.**
+Why: a session's Bash has no terminal, so this holds even past a bypassed rule, and a token asked for at the prompt cannot be one a session loaded.
+
+**Commit, then deploy HEAD, then verify, then push: the script takes only HEAD on a clean tree, the session then checks the entrypoint, `verify_jwt` and an update time after the deploy started through the read-only connector and smoke-tests the function, and only then pushes and reads CI.**
+Why: bytes that were never committed have nothing to compare against, and a push before the deploy leaves main holding function code that is not live.
+
+**The script reads the deployed function back and compares it with the commit, as a set and byte for byte; the CLI's update-check cache is the one allowed extra.**
+Why: an update time says that something was deployed, and only the bytes say what.
+
+**One constant pins the CLI, `SUPABASE_CLI_VERSION` in `scripts/functions-deploy.mjs`; both scripts run it as `npx --yes supabase@<pin>`, the session-start check warns when the installed CLI differs, and a CI workflow that installs the CLI is held equal to it by a test.**
+Why: a CLI that differs between machines fails on config one of them cannot parse, and one constant leaves nothing to drift.
+
+A session's `SUPABASE_PROJECT_REF` comes from the `env` key in the untracked `.claude/settings.local.json`, never an inline assignment; the human's comes from the shell case arm (section 1).
+
+Routes rejected:
+- A connector deploy: the session transcribes whole files into a tool call, so what deploys need not be the commit, and a bundler failure gives it nothing to diagnose.
+- A session deploying with the CLI: it would need a writable token within a session's reach.
+- CI deploying on push: it would put a project-writing token in CI and make the push itself the deploy, so main would move before anything was read back.
+
+- Implemented in: `SKILL.md` step 3's Edge Functions row and steps 5b and 5c; `templates/functions-deploy.mjs.tmpl`, `templates/functions-readback.mjs.tmpl` and the optional `templates/cli-pin.test.ts.tmpl`; the `functions-deploy` blocks in `CLAUDE.md.tmpl`, `session-start.sh.tmpl` and `claude-ai-project-instructions.md.tmpl`; `GETTING-STARTED.md` section 7.
+- Invariant: the order (commit, deploy HEAD, verify, push); the script's guards (two arguments, the slug and its `index.ts`, HEAD, a clean tree, the ref's shape, both terminals, the hidden token never read from the environment, each child's token in its own environment, every echoed line masked); the byte-for-byte read-back; the pinned `npx` form; every rule string step 5c writes for it, and the connector's `deploy_edge_function` deny.
+- Project-owned: the pin's value, the function slugs, and the one-run token.
